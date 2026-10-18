@@ -402,7 +402,7 @@
     color: var(--ink);
     max-width: 100%;
   }
-  .lockmsg { font-size: 0.8rem; font-weight: 800; color: var(--red); min-height: 1.1em; margin: 0; }
+  .lockmsg { font-size: 0.8rem; font-weight: 800; color: var(--red); min-height: 3.9em; margin: 0; }
   .rank {
     font-family: var(--font-display);
     font-size: 1.05rem;
@@ -469,6 +469,9 @@
   .goal { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 800; font-size: 0.82rem; }
   .goal .meter { width: 200px; height: 12px; }
   .goal .ready { color: #2f7a46; }
+  /* Every Locker tab gets the same list height, so the Locker never changes size when you switch tabs */
+  #panel { min-height: 0; }
+  #panel > .chscroll { height: 260px; max-height: none; }
   /* Phones: Locker tabs become a 3 x 2 grid so none are hidden off the side */
   @media (max-width: 480px), (min-width: 760px) and (max-width: 900px) {
     .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; border-bottom: 0; overflow: visible; }
@@ -481,21 +484,29 @@
     .home #preview { width: 230px; }
     #lockerCard #preview { width: 230px; }
     /* The item list shrinks on short phones so the whole Locker fits */
-    .panel .chscroll { max-height: clamp(150px, calc(100dvh - 640px), 280px); }
+    #panel > .chscroll { height: clamp(140px, calc(100dvh - 690px), 260px); }
+    /* Room for a two-line message plus its buttons, so the Locker keeps one size */
+    .lockmsg { min-height: 5.6em; }
+    .deal { padding: 4px 8px; font-size: 0.72rem; gap: 2px 6px; }
+    .deal button { padding: 2px 10px; font-size: 0.72rem; }
   }
   @media (max-height: 700px) {
     .homehint { display: none; }
   }
   /* Short desktop frames: the item list gives up room for the second row of tabs */
   @media (max-height: 640px) and (min-width: 481px) {
-    .panel .chscroll { max-height: clamp(150px, calc(100dvh - 255px), 280px); }
+    #panel > .chscroll { height: clamp(120px, calc(100dvh - 320px), 260px); }
   }
   /* Short phones: one-line wallet, smaller preview, no names under the switcher tiles */
   @media (max-width: 480px) and (max-height: 700px) {
     #lockerCard .bank { flex-direction: row; gap: 4px 14px; }
-    #lockerCard #preview { width: 180px; }
+    #lockerCard #preview { width: 150px; }
+    #lockerCard .locker-head .go { padding: 6px 16px; font-size: 0.95rem; }
+    #lockerCard h2 { font-size: 1.4rem; }
+    .tab { padding: 4px 4px; }
+    .lockmsg { font-size: 0.74rem; }
     .lockercrew .pick strong { display: none; }
-    .panel .chscroll { max-height: clamp(110px, calc(100dvh - 540px), 280px); }
+    #panel > .chscroll { height: clamp(110px, calc(100dvh - 557px), 260px); }
   }
   /* Short screens (small laptops, game-site frames, landscape phones): tighten the home screen */
   @media (max-height: 780px) {
@@ -1200,6 +1211,19 @@
   price(genCoins, ladder(36, 120, 18000), coinRewardSlots);
   coinRewardSlots.forEach((slot, j) => { genCoins[slot].challenge = rewardIds(1)[j]; });
   COINS.push(...genCoins);
+
+  // ----- Hand-drawn items that are not recolours. Aura trails also draw an animated aura around the flyer. -----
+  const unlockFor = p => Math.round(Math.pow(p, 1 / 0.78)); // the "unlock" that priceFor (below) turns into price p
+  const AURAS = new Set(['halo', 'orbit', 'phoenix']);
+  [
+    ['notes', 'Music notes', 120], ['leaves', 'Autumn leaves', 180], ['petals', 'Cherry blossom', 260],
+    ['planes', 'Paper planes', 380], ['donuts', 'Sprinkle donuts', 550], ['shooting', 'Shooting stars', 800],
+    ['halo', 'Halo', 1500], ['orbit', 'Orbiting stars', 2200], ['phoenix', 'Phoenix wings', 3000]
+  ].forEach(([id, name, p]) => TRAILS.push({ id, name, unlock: unlockFor(p) }));
+  [
+    ['smiley', 'Smiley', 150], ['clover', 'Lucky clover', 300], ['heartgem', 'Heart gem', 600],
+    ['moon', 'Crescent moon', 950], ['sun', 'Blazing sun', 1800]
+  ].forEach(([id, name, p]) => COINS.push({ id, name, unlock: unlockFor(p) }));
 
   // Looks up how to draw a trail or coin from its id (recoloured items point at a base kind).
   const trailIndex = new Map(), coinIndex = new Map();
@@ -2277,6 +2301,60 @@
         c.beginPath(); c.ellipse(0, 0, r * 0.45, r - lw / 2, 0, 0, Math.PI * 2);
         c.lineWidth = r * 0.06; c.strokeStyle = 'rgba(255,255,255,0.7)'; c.stroke();
         break;
+      case 'smiley':
+        disc(col('#ffd23f'));
+        c.fillStyle = INK;
+        c.beginPath(); c.ellipse(-r * 0.32, -r * 0.2, r * 0.11, r * 0.18, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(r * 0.32, -r * 0.2, r * 0.11, r * 0.18, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(0, r * 0.02, r * 0.52, 0.2 * Math.PI, 0.8 * Math.PI);
+        c.lineWidth = r * 0.14; c.strokeStyle = INK; c.stroke();
+        break;
+      case 'clover':
+        disc(col('#e9f6e0'));
+        line(c, 0, 0, r * 0.3, r * 0.7, r * 0.14, col('#2f6b3a'));
+        for (let k = 0; k < 4; k++) {
+          c.save(); c.rotate(k * Math.PI / 2 + Math.PI / 4);
+          heart(c, 0, -r * 0.36, r * 0.32); paint(c, col('#3fae5a'), lw * 0.6);
+          c.restore();
+        }
+        break;
+      case 'heartgem':
+        heart(c, 0, -r * 0.02, r * 0.98); paint(c, col('#ff3d6e'), lw);
+        line(c, 0, -r * 0.36, 0, r * 0.86, lw * 0.5);
+        line(c, -r * 0.55, -r * 0.25, 0, r * 0.86, lw * 0.4);
+        line(c, r * 0.55, -r * 0.25, 0, r * 0.86, lw * 0.4);
+        c.fillStyle = 'rgba(255,255,255,0.6)';
+        c.beginPath(); c.ellipse(-r * 0.45, -r * 0.45, r * 0.16, r * 0.09, -0.6, 0, Math.PI * 2); c.fill();
+        break;
+      case 'moon':
+        disc(col('#2b3a67'));
+        c.save();
+        c.beginPath(); c.arc(-r * 0.12, r * 0.02, r * 0.62, 0, Math.PI * 2); paint(c, col('#ffe58a'), lw * 0.8);
+        c.clip();
+        c.beginPath(); c.arc(r * 0.16, -r * 0.14, r * 0.52, 0, Math.PI * 2); paint(c, col('#2b3a67'), lw * 0.8);
+        c.restore();
+        star4(c, r * 0.5, r * 0.42, r * 0.16); c.fillStyle = '#ffffff'; c.fill();
+        star4(c, r * 0.28, -r * 0.58, r * 0.11); c.fillStyle = '#ffffff'; c.fill();
+        break;
+      case 'sun': {
+        // The rays turn and breathe, so this coin is alive in a run and in the Locker preview
+        const spin = reduceMotion ? 0 : t * 1.2, len = r * (0.96 + (reduceMotion ? 0 : Math.sin(t * 4) * 0.04));
+        c.beginPath();
+        for (let k = 0; k < 12; k++) {
+          const a = spin + k * Math.PI / 6;
+          c.moveTo(Math.cos(a - 0.17) * r * 0.55, Math.sin(a - 0.17) * r * 0.55);
+          c.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+          c.lineTo(Math.cos(a + 0.17) * r * 0.55, Math.sin(a + 0.17) * r * 0.55);
+          c.closePath();
+        }
+        paint(c, col('#ff9a1f'), lw * 0.7);
+        disc(col('#ffd23f'), r * 0.62);
+        c.fillStyle = INK;
+        c.beginPath(); c.arc(-r * 0.2, -r * 0.1, r * 0.07, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(r * 0.2, -r * 0.1, r * 0.07, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(0, r * 0.02, r * 0.28, 0.2 * Math.PI, 0.8 * Math.PI); c.lineWidth = r * 0.08; c.strokeStyle = INK; c.stroke();
+        break;
+      }
       default: disc(col('#f7c531')); txt('$', col('#9a6b00'));
     }
   }
@@ -2655,8 +2733,11 @@
     fizz: -60, fire: -120, sparkle: 20, cash: 60, hearts: -50, pixels: 0,
     protein: -20, plates: 220, likes: -70, flash: 0, stonks: -90, goldbar: 240,
     xp: -30, glitch: 0, beans: 200, vinyl: 160, footprints: 0, confetti: 120,
-    snowstorm: 30, comet: 0, lightning: 0
+    snowstorm: 30, comet: 0, lightning: 0,
+    notes: -40, leaves: 40, petals: 25, planes: -10, donuts: 220, shooting: 0, halo: 30, orbit: 0, phoenix: -70
   };
+  const LEAVES = ['#d8463b', '#ff9a1f', '#e0a020', '#a0522d'];
+  const FROSTING = ['#ff9bd3', '#7a4a2a', '#ffffff', '#8fd3ff'];
 
   function trailEmit(tr, id, x, y, k, burst, drift) {
     const tv = resolveTrail(id);
@@ -2698,6 +2779,21 @@
         case 'snowstorm': p.life = p.max = 0.9; p.r = (2.5 + Math.random() * 2) * k; p.vy = (10 + Math.random() * 40) * k; p.vr = (Math.random() - 0.5) * 4; break;
         case 'comet': p.life = p.max = 0.6; p.r = (4 + Math.random() * 2) * k; p.vx = -drift * 0.8; p.vy = (Math.random() - 0.5) * 20 * k; break;
         case 'lightning': p.life = p.max = 0.25; p.r = (6 + Math.random() * 3) * k; p.vx = -drift * 0.4; p.vy = (Math.random() - 0.5) * 40 * k; p.vr = 0; break;
+        case 'notes': p.life = p.max = 0.9; p.r = (3.5 + Math.random() * 1.5) * k; p.vy = (-10 + Math.random() * 30) * k; p.vr = 0; p.rot = (Math.random() - 0.5) * 0.5; break;
+        case 'leaves':
+          p.life = p.max = 1.0; p.r = (3.5 + Math.random() * 1.5) * k; p.vy = (10 + Math.random() * 40) * k;
+          p.vr = (Math.random() - 0.5) * 6; p.col = LEAVES[Math.floor(Math.random() * LEAVES.length)];
+          break;
+        case 'petals': p.life = p.max = 1.0; p.r = (2.8 + Math.random() * 1.2) * k; p.vy = (5 + Math.random() * 30) * k; p.vr = (Math.random() - 0.5) * 5; break;
+        case 'planes':
+          p.life = p.max = 0.9; p.r = 5 * k; p.vx = -drift * 0.25 - 30 * k; p.vy = (-15 + Math.random() * 30) * k;
+          p.vr = 0; p.rot = (Math.random() - 0.5) * 0.4;
+          break;
+        case 'donuts': p.life = p.max = 0.8; p.r = 4.2 * k; p.col = FROSTING[Math.floor(Math.random() * FROSTING.length)]; break;
+        case 'shooting': p.life = p.max = 0.5; p.r = (4.5 + Math.random() * 1.5) * k; p.vx = -drift * 0.7; p.vy = (Math.random() - 0.5) * 30 * k; p.vr = 2; break;
+        case 'halo': p.life = p.max = 0.9; p.r = (3 + Math.random() * 1.5) * k; p.vy = (10 + Math.random() * 20) * k; p.vr = (Math.random() - 0.5) * 3; break;
+        case 'orbit': p.life = p.max = 0.6; p.r = (2 + Math.random() * 1.5) * k; p.vy = (Math.random() - 0.5) * 30 * k; break;
+        case 'phoenix': p.life = p.max = 0.6; p.r = (2.5 + Math.random() * 2.5) * k; p.vy = (-20 - Math.random() * 40) * k; break;
       }
       tr.parts.push(p);
     }
@@ -2843,6 +2939,81 @@
         c.lineWidth = 1.8; c.strokeStyle = col('#ffe066'); c.stroke();
         c.lineJoin = 'round';
         break;
+      case 'notes': {
+        const nc = p.alt ? col('#8a5cd6') : col('#3c7fd1');
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        c.beginPath(); c.moveTo(p.r * 0.6, 0); c.lineTo(p.r * 0.6, -p.r * 1.9);
+        c.quadraticCurveTo(p.r * 1.6, -p.r * 1.4, p.r * 1.3, -p.r * 0.7);
+        c.lineWidth = 3; c.strokeStyle = INK; c.stroke();
+        c.lineWidth = 1.4; c.strokeStyle = nc; c.stroke();
+        c.beginPath(); c.ellipse(0, 0, p.r * 0.75, p.r * 0.55, -0.4, 0, Math.PI * 2); c.fillStyle = nc; c.fill(); ink();
+        c.restore();
+        break;
+      }
+      case 'leaves':
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        c.beginPath(); c.moveTo(-p.r, 0);
+        c.quadraticCurveTo(0, -p.r * 0.8, p.r, 0); c.quadraticCurveTo(0, p.r * 0.8, -p.r, 0);
+        c.fillStyle = col(p.col); c.fill(); ink();
+        line(c, -p.r * 1.3, 0, p.r * 0.7, 0, 0.8, 'rgba(34,34,34,0.6)');
+        c.restore();
+        break;
+      case 'petals':
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        c.beginPath(); c.moveTo(0, p.r);
+        c.bezierCurveTo(-p.r * 1.1, p.r * 0.1, -p.r * 0.6, -p.r, -p.r * 0.15, -p.r * 0.85);
+        c.lineTo(0, -p.r * 0.55); c.lineTo(p.r * 0.15, -p.r * 0.85);
+        c.bezierCurveTo(p.r * 0.6, -p.r, p.r * 1.1, p.r * 0.1, 0, p.r);
+        c.fillStyle = p.alt ? col('#ffd1e3') : col('#ff9bc8'); c.fill(); ink();
+        c.restore();
+        break;
+      case 'planes':
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        c.beginPath(); c.moveTo(p.r * 1.3, 0); c.lineTo(-p.r, -p.r * 0.7); c.lineTo(-p.r * 0.55, 0); c.closePath();
+        c.fillStyle = col('#ffffff'); c.fill(); ink();
+        c.beginPath(); c.moveTo(p.r * 1.3, 0); c.lineTo(-p.r * 0.55, 0); c.lineTo(-p.r, p.r * 0.45); c.closePath();
+        c.fillStyle = p.alt ? col('#bfe6ff') : col('#d7dde4'); c.fill(); ink();
+        c.restore();
+        break;
+      case 'donuts':
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        c.beginPath(); c.arc(0, 0, p.r, 0, Math.PI * 2); c.moveTo(p.r * 0.38, 0); c.arc(0, 0, p.r * 0.38, 0, Math.PI * 2, true);
+        c.fillStyle = col('#e0a868'); c.fill(); ink();
+        c.beginPath(); c.arc(0, 0, p.r * 0.8, 0, Math.PI * 2); c.moveTo(p.r * 0.5, 0); c.arc(0, 0, p.r * 0.5, 0, Math.PI * 2, true);
+        c.fillStyle = col(p.col); c.fill();
+        for (let j = 0; j < 4; j++) {
+          const ang = j * 1.6 + 0.4, rad = p.r * 0.65;
+          const sx = Math.cos(ang) * rad, sy = Math.sin(ang) * rad;
+          line(c, sx - p.r * 0.1, sy - p.r * 0.06, sx + p.r * 0.1, sy + p.r * 0.06, 1.1, RAINBOW[(j * 2) % RAINBOW.length]);
+        }
+        c.restore();
+        break;
+      case 'shooting':
+        c.beginPath(); c.moveTo(p.x, p.y - p.r * 0.35); c.lineTo(p.x + p.r * 3.4, p.y - p.r * 1.1); c.lineTo(p.x, p.y + p.r * 0.35); c.closePath();
+        c.fillStyle = 'rgba(255,224,102,0.5)'; c.fill();
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        star5(c, 0, 0, p.r, p.r * 0.45); c.fillStyle = col('#ffe066'); c.fill(); ink();
+        c.restore();
+        break;
+      case 'halo':
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        if (p.alt) {
+          c.beginPath(); c.ellipse(0, 0, p.r * 1.3, p.r * 0.45, 0, 0, Math.PI * 2); c.fillStyle = col('#fff4c2'); c.fill(); ink();
+          line(c, -p.r * 1.5, 0, p.r * 1.1, 0, 0.9, col('#d6a03c'));
+        } else {
+          star4(c, 0, 0, p.r); c.fillStyle = col('#ffd23f'); c.fill(); ink();
+        }
+        c.restore();
+        break;
+      case 'orbit':
+        star5(c, p.x, p.y, p.r * 1.2, p.r * 0.55); c.fillStyle = p.alt ? col('#7fe3ff') : col('#ff7ab8'); c.fill(); ink();
+        break;
+      case 'phoenix':
+        c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
+        c.beginPath(); c.moveTo(0, -p.r); c.lineTo(p.r * 0.6, 0); c.lineTo(0, p.r); c.lineTo(-p.r * 0.6, 0); c.closePath();
+        c.fillStyle = a > 0.6 ? col('#fff3a0') : a > 0.3 ? col('#ff9a1f') : col('#d8463b'); c.fill(); ink();
+        c.restore();
+        break;
     }
     c.globalAlpha = 1;
   }
@@ -2887,14 +3058,100 @@
     }
     const sizes = { fizz: 2.6, fire: 4.5, sparkle: 4.5, cash: 4.2, hearts: 4, pixels: 2.6, protein: 3.4, plates: 4, likes: 3.4,
       flash: 5, stonks: 4.5, goldbar: 4, xp: 3, glitch: 4, beans: 3.2, vinyl: 4.5, footprints: 2.6, confetti: 2.6,
-      snowstorm: 4, comet: 4, lightning: 6.5 };
+      snowstorm: 4, comet: 4, lightning: 6.5,
+      notes: 3.6, leaves: 4.2, petals: 3.6, planes: 4.2, donuts: 4.4, shooting: 3.6, halo: 3.6, orbit: 3, phoenix: 4 };
+    const still = id === 'notes' || id === 'planes' || id === 'shooting';
     for (let i = 0; i < 4; i++) {
       drawTrailPart(c, {
-        kind: id, x: 6 + i * ((w - 12) / 3), y: h / 2 + (i % 2 ? -2.5 : 2.5), r: sizes[id] * (1 - i * 0.1),
-        life: 1 - i * 0.2, max: 1, rot: i * 0.7, alt: i % 2 === 0, v: tv.v,
-        col: (id === 'confetti' ? RAINBOW : PIXELS)[i % 4]
+        kind: id, x: 6 + i * ((w - 12) / 3), y: h / 2 + (i % 2 ? -2.5 : 2.5) + (id === 'notes' ? 2.5 : 0), r: sizes[id] * (1 - i * 0.1),
+        life: 1 - i * 0.2, max: 1, rot: still ? 0 : i * 0.7, alt: i % 2 === 0, v: tv.v,
+        col: (id === 'confetti' ? RAINBOW : id === 'leaves' ? LEAVES : id === 'donuts' ? FROSTING : PIXELS)[i % 4]
       }, 1);
     }
+  }
+
+  // Animated aura for the top trails, drawn in the flyer's own space (same origin and r as drawPerson):
+  // layer 'back' goes before the person, 'front' after. Only a look: hit boxes never change.
+  function drawAura(c, look, r, time, layer) {
+    const tv = resolveTrail(look.trail);
+    if (!AURAS.has(tv.kind)) return;
+    const col = x => (tv.v ? shade(x, tv.v) : x);
+    const tt = reduceMotion ? 0 : time;
+    const lw = Math.max(1.4, r * 0.09);
+    c.save();
+    c.lineJoin = 'round';
+    c.lineCap = 'round';
+    switch (tv.kind) {
+      case 'halo': {
+        const hy = -r * 1.95 + Math.sin(tt * 3) * r * 0.08;
+        const ring = (from, to) => {
+          c.beginPath(); c.ellipse(0, hy, r * 0.8, r * 0.24, 0, from, to);
+          c.lineWidth = lw * 3.2; c.strokeStyle = INK; c.stroke();
+          c.lineWidth = lw * 1.6; c.strokeStyle = col('#ffd23f'); c.stroke();
+        };
+        if (layer === 'back') {
+          const g = c.createRadialGradient(0, r * 0.4, r * 0.3, 0, r * 0.4, r * 2.5);
+          g.addColorStop(0, `rgba(255,226,120,${0.3 + Math.sin(tt * 2.5) * 0.08})`);
+          g.addColorStop(1, 'rgba(255,226,120,0)');
+          c.fillStyle = g;
+          c.beginPath(); c.arc(0, r * 0.4, r * 2.5, 0, Math.PI * 2); c.fill();
+          ring(Math.PI, Math.PI * 2);
+        } else {
+          ring(0, Math.PI);
+          for (let i = 0; i < 3; i++) {
+            const a = tt * 1.3 + i * 2.1, tw = 0.5 + 0.5 * Math.sin(tt * 5 + i * 1.7);
+            star4(c, Math.cos(a) * r * 1.6, r * 0.4 + Math.sin(a) * r * 1.35, r * 0.24 * (0.4 + tw * 0.6));
+            paint(c, '#fffbe6', lw * 0.6);
+          }
+        }
+        break;
+      }
+      case 'orbit': {
+        const rx = r * 1.75, ry = r * 0.55;
+        c.translate(0, r * 0.45);
+        c.rotate(-0.18);
+        if (layer === 'back') {
+          c.setLineDash([r * 0.15, r * 0.22]);
+          c.beginPath(); c.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+          c.lineWidth = lw * 0.8; c.strokeStyle = 'rgba(255,255,255,0.75)'; c.stroke();
+          c.setLineDash([]);
+        }
+        const cols = ['#ffd23f', '#ff7ab8', '#7fe3ff'];
+        for (let i = 0; i < 3; i++) {
+          const a = tt * 2.2 + i * Math.PI * 2 / 3, s = Math.sin(a);
+          if ((s >= 0) !== (layer === 'front')) continue;
+          const sz = r * 0.46 * (0.8 + 0.2 * s);
+          c.save(); c.translate(Math.cos(a) * rx, s * ry); c.rotate(tt * 3 + i);
+          star5(c, 0, 0, sz, sz * 0.45); paint(c, col(cols[i]), lw * 0.8);
+          c.restore();
+        }
+        break;
+      }
+      case 'phoenix': {
+        if (layer !== 'back') break;
+        const flap = Math.sin(tt * 6) * 0.28;
+        for (const side of [-1, 1]) {
+          c.save();
+          c.translate(side * r * 0.45, r * 0.45);
+          c.scale(side, 1);
+          c.rotate(-0.35 - flap);
+          for (const [s, fill, outline] of [[1, '#d8463b', true], [0.72, '#ff9a1f', false], [0.45, '#fff3a0', false]]) {
+            c.beginPath();
+            c.moveTo(0, 0);
+            c.quadraticCurveTo(r * 0.9 * s, -r * 1.3 * s, r * 2.1 * s, -r * s);
+            c.quadraticCurveTo(r * 1.7 * s, -r * 0.55 * s, r * 1.85 * s, -r * 0.25 * s);
+            c.quadraticCurveTo(r * 1.3 * s, -r * 0.15 * s, r * 1.35 * s, r * 0.15 * s);
+            c.quadraticCurveTo(r * 0.8 * s, r * 0.05 * s, r * 0.75 * s, r * 0.4 * s);
+            c.quadraticCurveTo(r * 0.4 * s, r * 0.2 * s, 0, 0);
+            c.closePath();
+            if (outline) paint(c, col(fill), lw); else { c.fillStyle = col(fill); c.fill(); }
+          }
+          c.restore();
+        }
+        break;
+      }
+    }
+    c.restore();
   }
 
   // ---------- Character select and customizer ----------
@@ -3330,7 +3587,7 @@
           renderCustom();
         });
         row.append(lab, sel);
-        kids.push(row);
+        scrollBox.prepend(row);
       }
       kids.push(scrollBox);
     } else if (currentTab === 'places') {
@@ -3914,7 +4171,9 @@
     trailDraw(c, previewTrail, 1);
     c.save();
     c.translate(px, py);
+    drawAura(c, look, r, t, 'back');
     drawPerson(c, look, r, { time: t, flame: previewFlame });
+    drawAura(c, look, r, t, 'front');
     c.restore();
     // the coin you'll be chasing
     const spin = reduceMotion ? 1 : Math.abs(Math.cos(t * 3));
@@ -4808,7 +5067,9 @@
     ctx.rotate(player.tilt);
     const sq = 1 + player.squish * 0.08;
     ctx.scale(sq * hero.size, (2 - sq) * hero.size);
+    drawAura(ctx, heroLook, headR(), t, 'back');
     drawPerson(ctx, heroLook, headR(), { time: t, dead: state === 'over', flame: player.flame });
+    drawAura(ctx, heroLook, headR(), t, 'front');
     ctx.restore();
   }
 
