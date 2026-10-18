@@ -406,6 +406,67 @@
   .daily .days i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink); background: #ffffff; }
   .daily .days i.on { background: var(--gold); }
   .daily button { padding: 4px 12px; font-size: 0.8rem; }
+  /* Home: settings is a corner button; wallet and runs share a line */
+  .card-inner.home { position: relative; }
+  .gear { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; display: grid; place-items: center; padding: 0;
+    background: #ffffff; color: var(--ink); border: 2.5px solid var(--ink); border-radius: 10px; box-shadow: 2px 2px 0 var(--ink); cursor: pointer; }
+  .gear:active { transform: translate(2px, 2px); box-shadow: 0 0 0 var(--ink); }
+  .gear:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+  #startCard .bank { flex-direction: row; gap: 4px 14px; }
+  .card-inner.home h1 { padding: 0 44px; }
+  /* Locker: the character tiles sit under the preview so you can switch without leaving */
+  .lockercrew { width: 100%; display: flex; justify-content: center; }
+  .lockercrew .crew { max-width: 340px; gap: 4px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .lockercrew .pick { padding: 3px 2px 4px; border-width: 2px; }
+  .lockercrew .pick canvas { width: 36px; height: 40px; }
+  .lockercrew .pick strong { font-size: 0.62rem; letter-spacing: 0; overflow-wrap: normal; }
+  /* Game over: progress toward the next thing to buy */
+  .goal { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 800; font-size: 0.82rem; }
+  .goal .meter { width: 200px; height: 12px; }
+  .goal .ready { color: #2f7a46; }
+  /* Phones: Locker tabs become a 3 x 2 grid so none are hidden off the side */
+  @media (max-width: 480px), (min-width: 760px) and (max-width: 900px) {
+    .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; border-bottom: 0; overflow: visible; }
+    .tab { border-bottom: 2.5px solid var(--ink); border-radius: 8px; margin-bottom: 0; padding: 6px 4px; }
+    .tab[aria-selected="true"] { background: var(--gold); padding-bottom: 6px; box-shadow: 2px 2px 0 var(--ink); }
+  }
+  @media (max-width: 480px) {
+    .daily .days { display: none; }
+    .card .tagline { display: none; }
+    .home #preview { width: 230px; }
+    #lockerCard #preview { width: 230px; }
+    /* The item list shrinks on short phones so the whole Locker fits */
+    .panel .chscroll { max-height: clamp(150px, calc(100dvh - 505px), 280px); }
+  }
+  @media (max-height: 700px) {
+    .homehint { display: none; }
+  }
+  /* Short desktop frames: the item list gives up room for the second row of tabs */
+  @media (max-height: 640px) and (min-width: 481px) {
+    .panel .chscroll { max-height: clamp(150px, calc(100dvh - 255px), 280px); }
+  }
+  /* Short phones: one-line wallet, smaller preview, no names under the switcher tiles */
+  @media (max-width: 480px) and (max-height: 700px) {
+    #lockerCard .bank { flex-direction: row; gap: 4px 14px; }
+    #lockerCard #preview { width: 180px; }
+    .lockercrew .pick strong { display: none; }
+    .panel .chscroll { max-height: clamp(110px, calc(100dvh - 540px), 280px); }
+  }
+  /* Short screens (small laptops, game-site frames, landscape phones): tighten the home screen */
+  @media (max-height: 780px) {
+    .card { padding: 8px; }
+    .card-inner { gap: 8px; padding: 12px 14px; }
+    .card .tagline { display: none; }
+    .card h1 { font-size: clamp(1.7rem, 5vw, 2.4rem); }
+    .home #preview { width: 220px; }
+    .go.big { padding: 9px 34px; font-size: 1.2rem; }
+    .pick canvas { width: 40px; height: 45px; }
+  }
+  @media (max-height: 640px) {
+    .homehint { display: none; }
+    .home .slot { display: none; }
+    .lockercrew { display: none; }
+  }
   .copied { font-size: 0.85rem; font-weight: 800; color: var(--red); min-height: 1.2em; margin: -4px 0 0; }
   @media (prefers-reduced-motion: reduce) { .pick, .go, .ghost { transition: none; } }
   .left { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -456,7 +517,8 @@
   </div>
 
   <div class="card" id="startCard">
-    <div class="card-inner">
+    <div class="card-inner home">
+      <button class="gear" id="settingsBtn" type="button" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="3.6" stroke-dasharray="3.3 3.4"/><circle cx="12" cy="12" r="6.2" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#ffffff"/></svg></button>
       <h1>Main Character Airlines</h1>
       <p class="tagline">Now boarding: six main characters with drinks strapped to their backs. Tap to fly.</p>
       <div class="slot" id="homeSlot">
@@ -468,11 +530,10 @@
       <div class="row">
         <button class="go big" id="startBtn" type="button">Play</button>
         <button class="ghost" id="lockerBtn" type="button">Locker</button>
-        <button class="ghost" id="settingsBtn" type="button">Settings</button>
       </div>
       <div class="daily" id="dailyBox" hidden></div>
       <div class="bank bankline"></div>
-      <div class="hint">Tap, click, or press Space to boost. Spend coins on new looks in the Locker.</div>
+      <div class="hint homehint">Tap, click, or press Space to boost. Spend coins on new looks in the Locker.</div>
       <div class="hint" id="voiceHint" hidden></div>
     </div>
   </div>
@@ -487,6 +548,7 @@
         <div class="side">
           <div class="slot" id="lockerSlot"></div>
           <div class="bank bankline"></div>
+          <div class="lockercrew" id="lockerCrew"></div>
         </div>
         <div class="side custom">
           <div class="tabs" role="tablist" aria-label="Customize">
@@ -514,6 +576,7 @@
         <div><span>Best</span><strong id="finalBest">0</strong></div>
       </div>
       <div class="coinline" id="coinLine"></div>
+      <div class="goal" id="goalBox" hidden></div>
       <div class="unlocks" id="chDone" hidden></div>
       <div class="unlocks" id="unlocks" hidden></div>
       <div class="row adrow" id="adRow" hidden>
@@ -3353,6 +3416,7 @@
     const fresh = addCoins(runEarned);
     track('coins_doubled', { coins: runEarned });
     $('coinLine').textContent = coinSummary(runEarned * 2, true);
+    renderGoal();
     if (fresh.length) {
       const ul = $('unlocks');
       ul.replaceChildren();
@@ -3473,6 +3537,27 @@
 
   function renderBank() {
     document.querySelectorAll('.bankline').forEach(renderBankInto);
+  }
+  // Game-over progress: how many items this character can buy now, and a bar to the next one.
+  function renderGoal() {
+    const box = $('goalBox');
+    const left = UNLOCKABLES.filter(u => (!u.owner || u.owner === hero.id) && !(u.item.isPlace ? themeOpen(u.item) : isOpen(u.item)));
+    const ready = left.filter(u => canBuy(u.item)).length;
+    const next = left.filter(u => u.item.price > wallet && !runsShort(u.item)).sort((a, b) => a.item.price - b.item.price)[0];
+    const kids = [];
+    if (next) {
+      const lab = document.createElement('span');
+      lab.textContent = `Next: ${next.label}, ${wallet}/${next.item.price}`;
+      const meter = document.createElement('span');
+      meter.className = 'meter';
+      const fill = document.createElement('i');
+      fill.style.width = `${Math.min(100, Math.round((wallet / next.item.price) * 100))}%`;
+      meter.append(fill);
+      kids.push(lab, meter);
+    }
+    box.replaceChildren(...kids);
+    box.hidden = !kids.length;
+    $('switchBtn').textContent = ready ? `Locker (${ready} to buy)` : 'Locker';
   }
   function renderBankInto(el) {
     const row = document.createElement('div');
@@ -3932,6 +4017,7 @@
     $('finalScore').textContent = score;
     $('finalBest').textContent = best;
     $('coinLine').textContent = coinSummary(runEarned);
+    renderGoal();
     if (trialTheme) $('coinLine').textContent += ` Like ${activeTheme().name}? Find it in the Locker under Places.`;
     const ul = $('unlocks');
     if (fresh.length) {
@@ -4528,7 +4614,8 @@
     ctx.font = `${(waiting ? 28 : 15) * u}px "Luckiest Guy", Impact, sans-serif`;
     ctx.textAlign = 'center';
     ctx.lineJoin = 'round';
-    const y = waiting ? H * 0.64 : H * 0.2;
+    // The tip sits low on the screen, clear of the score, the challenge tracker and the speech bubble.
+    const y = waiting ? H * 0.64 : H * 0.82;
     ctx.globalAlpha = waiting && !reduceMotion ? 0.75 + Math.sin(t * 5) * 0.25 : 1;
     ctx.lineWidth = 5 * u;
     ctx.strokeStyle = INK;
@@ -4623,6 +4710,7 @@
     startCard.hidden = true;
     lockerCard.hidden = false;
     $('lockerSlot').append(pv);
+    $('lockerCrew').append(crewEl);
     backToReady();
     renderCustom();
   }
@@ -4631,6 +4719,7 @@
     lockerCard.hidden = true;
     startCard.hidden = false;
     $('homeSlot').append(pv);
+    $('homeSlot').after(crewEl);
     backToReady();
     renderDaily();
   }
