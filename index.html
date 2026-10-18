@@ -348,6 +348,22 @@
   .listhead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; font-size: 0.75rem; font-weight: 800; }
   .listhead .readyn { color: var(--red); }
   .listhead .rarity-key { padding: 0; }
+  .headbtns { display: flex; gap: 8px; align-items: center; }
+  .crewtoggle { display: none; }
+  @media (max-width: 480px) {
+    .crewtoggle { display: inline-block; padding: 6px 12px; font-size: 0.85rem; }
+    #lockerCard .side { position: relative; }
+    /* Character tiles live behind the Switch button and open over the preview */
+    #lockerCard .lockercrew { display: none; }
+    #lockerCard .crew-open .lockercrew { display: flex; position: absolute; top: 0; left: 0; right: 0; z-index: 5; padding: 6px; box-sizing: border-box;
+      background: var(--paper); border: 2.5px solid var(--ink); border-radius: 10px; box-shadow: 3px 3px 0 var(--ink); }
+    #lockerCard .bank { flex-direction: row; gap: 4px 14px; }
+    /* Today's deal on one line */
+    .deal { flex-wrap: nowrap; text-align: left; }
+    .deal strong { white-space: nowrap; }
+    .deal span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .deal button { flex: none; }
+  }
   /* Phones: colour picker on one line, and no rarity key, so more items fit */
   @media (max-width: 480px) {
     .colorrow { flex-wrap: nowrap; }
@@ -504,7 +520,7 @@
     .home #preview { width: 230px; }
     #lockerCard #preview { width: 230px; }
     /* The item list shrinks on short phones so the whole Locker fits */
-    #panel > .chscroll { height: clamp(140px, calc(100dvh - 705px), 260px); }
+    #panel > .chscroll { height: clamp(140px, calc(100dvh - 582px), 300px); }
     /* Room for a two-line message plus its buttons, so the Locker keeps one size */
     .lockmsg { height: 7em; }
     .deal { padding: 4px 8px; font-size: 0.72rem; gap: 2px 6px; }
@@ -526,7 +542,7 @@
     .tab { padding: 4px 4px; }
     .lockmsg { font-size: 0.74rem; }
     .lockercrew .pick strong { display: none; }
-    #panel > .chscroll { height: clamp(90px, calc(100dvh - 600px), 260px); }
+    #panel > .chscroll { height: clamp(110px, calc(100dvh - 520px), 260px); }
   }
   /* Short screens (small laptops, game-site frames, landscape phones): tighten the home screen */
   @media (max-height: 780px) {
@@ -541,7 +557,7 @@
   @media (max-height: 640px) {
     .homehint { display: none; }
     .home .slot { display: none; }
-    .lockercrew { display: none; }
+    #lockerCard .lockercrew { display: none; }
   }
   .copied { font-size: 0.85rem; font-weight: 800; color: var(--red); min-height: 1.2em; margin: -4px 0 0; }
   @media (prefers-reduced-motion: reduce) { .pick, .go, .ghost { transition: none; } }
@@ -618,7 +634,10 @@
     <div class="card-inner">
       <div class="locker-head">
         <h2 id="lockerTitle">Locker</h2>
-        <button class="go" id="lockerDone" type="button">Done</button>
+        <div class="headbtns">
+          <button class="ghost crewtoggle" id="crewToggle" type="button" aria-expanded="false" aria-controls="lockerCrew">Switch</button>
+          <button class="go" id="lockerDone" type="button">Done</button>
+        </div>
       </div>
       <div class="setup">
         <div class="side">
@@ -1514,6 +1533,7 @@
   let W = 0, H = 0, u = 1, dpr = 1;
   let state = 'ready';
   let player, poles, particles, popups, flakes, mountains, town;
+  let rescueLeft = 0;
   let score = 0, streak = 0, runCoins = 0, shieldReady = false, best = 0, t = 0, overAt = 0, scroll = 0, shake = 0;
   let hist = [], curRow = 0, doubled = false, runTime = 0, runDone = [], lastMilestone = 0;
   let waiting = false, paused = false, spawned = 0, lastGapMid = null, tutorialDone = false;
@@ -3208,6 +3228,7 @@
       heroLook = lookOf(hero);
       clearTryOn();
       activeFam = null;
+      if (typeof setCrewOpen === 'function') setCrewOpen(false);
       preloadHero(hero);
       try { localStorage.setItem('jetpackersHero', p.id); } catch (err) {}
       resetPreviewTrail();
@@ -4451,6 +4472,8 @@
     hist = []; curRow = 0; doubled = false; runTime = 0; runDone = []; lastMilestone = 0; spawned = 0; lastGapMid = null;
     continued = false; coinsDoubled = false; banked = 0; bonusBanked = 0; runEarned = 0; runCounted = false;
     shieldReady = !!hero.shield;
+    // In a new player's first three runs, the first hit of each run is forgiven.
+    rescueLeft = (runStats.total || 0) < 3 ? 1 : 0;
     setStreak(0);
     scoreEl.textContent = '0';
   }
@@ -4656,8 +4679,27 @@
     begin();
   }
 
+  // The forgiven hit: clear the obstacle, put the flyer back in open air and say so.
+  function rescue() {
+    rescueLeft = 0;
+    poles = poles.filter(o => o.x > player.x + 140 * u || o.x + o.w < player.x - 60 * u);
+    if (player.y + hitR() > groundY() - 20 * u || player.y < 40 * u) player.y = H * 0.42;
+    player.vy = -120 * u;
+    player.tilt = 0;
+    shake = 0.4;
+    bubble = { text: 'Saved! New flyers get one free bump.', life: 2.4 };
+    popups.push({ x: player.x, y: player.y - 34 * u, life: 0.9, text: 'Saved!' });
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({ x: player.x, y: player.y, vx: Math.cos(a) * 120 * u, vy: Math.sin(a) * 120 * u, life: 0.6, max: 0.6, kind: 'gold', r: 2.2 * u });
+    }
+    tone(520, 0.08, 'triangle', 0.06); tone(780, 0.14, 'triangle', 0.06, null, 0.08);
+    track('rescue', { score });
+  }
+
   function crash(reason) {
     if (captureMode) return;
+    if (state === 'play' && rescueLeft > 0) { rescue(); return; }
     state = 'over';
     overAt = performance.now();
     shake = 1;
@@ -5461,7 +5503,15 @@
   }
   $('switchBtn').addEventListener('click', showLocker);
   $('lockerBtn').addEventListener('click', e => { e.stopPropagation(); showLocker(); });
-  $('lockerDone').addEventListener('click', e => { e.stopPropagation(); clearTryOn(); activeFam = null; $('lockMsg').textContent = ''; showHome(); });
+  $('lockerDone').addEventListener('click', e => { e.stopPropagation(); clearTryOn(); activeFam = null; $('lockMsg').textContent = ''; setCrewOpen(false); showHome(); });
+  // Phones: the character tiles open over the preview from the Switch button.
+  function setCrewOpen(open) {
+    const side = $('lockerCrew').parentElement;
+    side.classList.toggle('crew-open', open);
+    $('crewToggle').setAttribute('aria-expanded', String(open));
+    $('crewToggle').textContent = open ? 'Close' : 'Switch';
+  }
+  $('crewToggle').addEventListener('click', e => { e.stopPropagation(); setCrewOpen(!$('lockerCrew').parentElement.classList.contains('crew-open')); });
 
   // ---------- Settings, pause, credits and privacy ----------
   // The email address players can write to about privacy.
