@@ -1,0 +1,13 @@
+{
+  "name": "Main Character Airlines",
+  "short_name": "MC Airlines",
+  "description": "A one-button arcade game: pick a meme character, strap a drink to your back and fly.",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#cfe7f7",
+  "theme_color": "#6fb6e6",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
