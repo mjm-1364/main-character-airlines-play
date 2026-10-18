@@ -241,6 +241,22 @@
   }
   .adbtn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
   .adbtn:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
+  .trackbtn {
+    align-self: flex-start;
+    font: inherit;
+    font-weight: 800;
+    font-size: 0.78rem;
+    padding: 5px 12px;
+    color: var(--ink);
+    background: #ffffff;
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .trackbtn.on { background: var(--gold); box-shadow: 2px 2px 0 var(--ink); }
+  .trackbtn:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .card .chhint { font-size: 0.8rem; margin: 0; max-width: none; opacity: 0.8; }
+  .card .tracking { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 0.82rem; font-weight: 800; margin: -4px 0 0; max-width: none; }
   .adtag { font-size: 0.65rem; letter-spacing: 0.08em; color: #ffffff; background: var(--ink); border-radius: 4px; padding: 2px 5px; }
   body.capture { padding: 0 !important; }
   .capture .stage { border: 0; border-radius: 0; box-shadow: none; max-width: none; }
@@ -431,6 +447,7 @@
       </div>
       <div class="crew" id="crew" role="group" aria-label="Pick your character"></div>
       <p class="who" id="who"></p>
+      <p class="tracking" id="trackingLine" hidden></p>
       <div class="row">
         <button class="go big" id="startBtn" type="button">Play</button>
         <button class="ghost" id="lockerBtn" type="button">Locker</button>
@@ -832,12 +849,243 @@
       if (o) return `${o.name} outfit`;
       const a = c.accs.find(x => x.challenge === ch.id);
       if (a) return `${a.name} extra`;
+      const st = c.sigTrails.find(x => x.challenge === ch.id);
+      if (st) return `${st.name} trail`;
+      const sc = (c.coins || []).find(x => x.challenge === ch.id);
+      if (sc) return `${sc.name} coin`;
     }
     const tr = TRAILS.find(x => x.challenge === ch.id);
     if (tr) return `${tr.name} trail (everyone)`;
     const co = COINS.find(x => x.challenge === ch.id);
     if (co) return `${co.name} coin (everyone)`;
+    const pl = THEMES.find(x => x.challenge === ch.id);
+    if (pl) return `${pl.name} place (everyone)`;
     return '';
+  }
+
+  // ---------- Expansion: five times the unlocks and challenges ----------
+  // Most added items are recoloured versions of the hand-drawn ones. A style either paints every
+  // coloured part one hue ("Ruby", "Teal") or shifts saturation and lightness ("Midnight", "Pastel").
+  // force: also tint the grey parts (used for coins and plates, which are mostly grey).
+  const STYLES = [
+    { n: 'Ruby', key: 'ruby', hue: 352 }, { n: 'Amber', key: 'amber', hue: 34 }, { n: 'Lime', key: 'lime', hue: 88 },
+    { n: 'Teal', key: 'teal', hue: 172 }, { n: 'Sapphire', key: 'sapphire', hue: 218 }, { n: 'Violet', key: 'violet', hue: 272 },
+    { n: 'Rose', key: 'rose', hue: 326 }, { n: 'Midnight', key: 'midnight', lit: -0.22 }, { n: 'Pastel', key: 'pastel', sat: -0.25, lit: 0.18 },
+    { n: 'Neon', key: 'neon', sat: 0.45, lit: 0.04 }, { n: 'Mono', key: 'mono', sat: -1 }, { n: 'Gold', key: 'gold', hue: 45, satTo: 0.8 }
+  ];
+  const forced = st => Object.assign({}, st, { key: st.key + '!', force: true });
+
+  const shadeCache = new Map();
+  function shade(hex, v) {
+    if (!v || typeof hex !== 'string' || hex.length !== 7 || hex[0] !== '#') return hex;
+    const key = hex + v.key;
+    const hit = shadeCache.get(key);
+    if (hit) return hit;
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16 & 255) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h *= 60;
+    }
+    const clamp = x => Math.max(0, Math.min(1, x));
+    const tintable = s > 0.08 || (v.force && l > 0.12 && l < 0.92);
+    if (v.hue != null && tintable) { h = v.hue; if (s < 0.3) s = v.force ? 0.55 : s; }
+    if (v.rot) h = (h + v.rot + 360) % 360;
+    if (v.satTo != null && tintable) s = v.satTo;
+    if (v.sat) s = clamp(s + v.sat);
+    if (v.lit) l = clamp(l + v.lit);
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p2 = 2 * l - q;
+    const hk = h / 360;
+    const ch = t => {
+      t = (t + 1) % 1;
+      const x = t < 1 / 6 ? p2 + (q - p2) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p2 + (q - p2) * (2 / 3 - t) * 6 : p2;
+      return Math.round(x * 255).toString(16).padStart(2, '0');
+    };
+    const grey = Math.round(l * 255).toString(16).padStart(2, '0');
+    const out = s === 0 ? '#' + grey + grey + grey : '#' + ch(hk + 1 / 3) + ch(hk) + ch(hk - 1 / 3);
+    shadeCache.set(key, out);
+    return out;
+  }
+  // Copies an object, recolouring every '#rrggbb' string inside it.
+  function shadeDeep(x, v) {
+    if (typeof x === 'string') return shade(x, v);
+    if (Array.isArray(x)) return x.map(y => shadeDeep(y, v));
+    if (x && typeof x === 'object') { const o = {}; for (const k in x) o[k] = shadeDeep(x[k], v); return o; }
+    return x;
+  }
+  // n prices rising smoothly from `from` to `to`, rounded to friendly numbers.
+  const ladder = (n, from, to) => Array.from({ length: n }, (_, i) => {
+    const x = from * Math.pow(to / from, n > 1 ? i / (n - 1) : 0);
+    const step = x < 200 ? 5 : x < 1000 ? 25 : 50;
+    return Math.round(x / step) * step;
+  });
+  // Gives items their prices, except the ones picked as challenge rewards.
+  const price = (items, prices, rewardSlots) => items.forEach((it, i) => { if (!rewardSlots.includes(i)) it.unlock = prices[i]; });
+
+  // New challenges. Pattern descriptions are written from the pattern itself.
+  const addChallenge = ch => {
+    if (ch.type === 'pattern') ch.desc = describePattern(ch.pattern) + (ch.flavor ? ' ' + ch.flavor : '');
+    CHALLENGES.push(ch);
+    return ch.id;
+  };
+
+  // ----- Per character: 24 outfits, 20 extras, 8 signature trails, 4 signature coins, 8 challenges -----
+  const CHAR_CHALLENGES = {
+    chad: [['Drop set', 'CCMCCMCC', 'Two reps, rest, repeat.'], ['Warm-up then max', 'CMCMCCCC'], ['Superset', 'MCCCCCM'],
+      ['Gym rat', 30], ['Hall of gains', 120], ['Protein budget', 12], ['No spotter needed', 6], ['Never skips', 25]],
+    kaylee: [['Collab', 'CCMMCC'], ['Story time', 'MCCMCC'], ['Algorithm hack', 'CMCMMCMC', 'Post, wait, post again.'],
+      ['Rising star', 30], ['Blue check energy', 120], ['Brand deal', 12], ['Viral loop', 6], ['Daily vlog', 25]],
+    bradley: [['Hold the line', 'CMMMCC', 'Diamond hands.'], ['Sell high', 'CCCMMM'], ['Day trader', 'MCMCMCC'],
+      ['Junior analyst', 30], ['Managing director', 120], ['Dividend', 12], ['Bull streak', 6], ['Grindset', 25]],
+    kevin: [['Input buffer', 'CMMCMMC'], ['Sequence skip', 'CCCCMM'], ['Boss pattern', 'MCCMMCC', 'Learn it, then beat it.'],
+      ['Ranked', 30], ['Grandmaster', 120], ['Loot drop', 12], ['Win streak', 6], ['No life', 25]],
+    dustin: [['B-side', 'MMCCMM'], ['Slow pour', 'CMMCMMC', 'Good things take time.'], ['Lo-fi beat', 'MCMCCMC'],
+      ['Indie darling', 30], ['Cult classic', 120], ['Vintage find', 12], ['On repeat', 6], ['Regular customer', 25]],
+    jess: [['Tempo run', 'CCMCCMCCM'], ['Fartlek', 'MCCCMCCC', 'Mix the speeds.'], ['Strides', 'CMCMCMCC'],
+      ['Personal best', 30], ['Ultramarathoner', 120], ['Fuel stop', 12], ['Negative splits', 6], ['Streak keeper', 25]]
+  };
+  CREW.forEach((c, ci) => {
+    const ids = CHAR_CHALLENGES[c.id].map(([name, v, flavor], k) => {
+      const id = `${c.id}-x${k + 1}`;
+      if (k < 3) return addChallenge({ id, who: c.id, name, type: 'pattern', pattern: v, flavor });
+      const type = ['score', 'score', 'runCoins', 'row', 'heroRuns'][k - 3];
+      const desc = {
+        score: `Score ${v} points as ${c.name}.`,
+        runCoins: `Collect ${v} coins in one run as ${c.name}.`,
+        row: `Collect ${v} coins in a row as ${c.name}.`,
+        heroRuns: `Finish ${v} runs as ${c.name}.`
+      }[type];
+      return addChallenge({ id, who: c.id, name, type, value: v, desc });
+    });
+
+    // 24 outfits: the three starter outfits in eight styles each
+    const outfits = [];
+    for (let k = 0; k < 8; k++) {
+      const st = STYLES[(k + ci) % 8];
+      c.outfits.slice(0, 3).forEach(b => {
+        const colours = {};
+        for (const f of ['top', 'pants', 'accent', 'vest']) {
+          const val = b.o[f] || c[f];
+          if (val) colours[f] = shade(val, forced(st));
+        }
+        outfits.push({ name: `${st.n} ${b.name}`, o: Object.assign({}, b.o, colours) });
+      });
+    }
+    price(outfits, ladder(24, 75, 3000), [7, 15, 23]);
+    [7, 15, 23].forEach((slot, j) => { outfits[slot].challenge = ids[j]; });
+
+    // 20 extras: the four original extras in five styles each
+    const extras = [];
+    [0, 4, 7, 9, 10].forEach(si => {
+      const st = STYLES[si];
+      c.accs.slice(0, 4).forEach(b => extras.push({ id: `${b.id}-${st.key}`, base: b.id, v: forced(st), name: `${b.name} (${st.n})` }));
+    });
+    price(extras, ladder(20, 125, 3200), [9, 19]);
+    extras[9].challenge = ids[3];
+    extras[19].challenge = ids[4];
+
+    // 8 signature trails: both signature trails in four styles each
+    const trails = [];
+    [0, 3, 5, 11].forEach(si => {
+      const st = STYLES[si];
+      c.sigTrails.slice(0, 2).forEach(b => trails.push({ id: `${b.id}-${st.key}`, kind: b.id, v: forced(st), name: `${b.name} (${st.n})` }));
+    });
+    price(trails, ladder(8, 300, 2800), [3, 7]);
+    trails[3].challenge = ids[5];
+    trails[7].challenge = ids[6];
+
+    // 4 more signature coins
+    c.coins = [0, 3, 5, 11].map(si => {
+      const st = forced(STYLES[si]);
+      return { id: `${c.coin.id}-${STYLES[si].key}`, base: c.coin.id, v: st, name: `${c.coin.name} (${STYLES[si].n})` };
+    });
+    price(c.coins, ladder(4, 600, 2400), [3]);
+    c.coins[3].challenge = ids[7];
+
+    for (const it of [...outfits, ...extras, ...trails, ...c.coins]) it.owner = c.id;
+    c.outfits.push(...outfits);
+    c.accs.push(...extras);
+    c.sigTrails.push(...trails);
+  });
+
+  // ----- Everyone: 24 challenges, 40 trails, 36 coin styles (places are added with the places) -----
+  const G = [
+    ['Heartbeat', 'pattern', 'CCMCCM'], ['Frequent flyer', 'score', 40], ['Pocket change', 'runCoins', 10],
+    ['Bookends', 'pattern', 'MCCCCM'], ['Cruising altitude', 'score', 75], ['Window seat', 'noCoinScore', 50],
+    ['Comeback', 'pattern', 'CMMMCCC'], ['Hot streak', 'row', 15], ['Ensemble cast', 'tourScore', 25],
+    ['Almost perfect', 'pattern', 'CCCCCM'], ['Regular', 'runs', 50], ['Express lane', 'speed', 20],
+    ['Skipping stones', 'pattern', 'MMCMMC'], ['Coin collector', 'runCoins', 35], ['Long haul', 'score', 200],
+    ['Climb', 'pattern', 'CMCCMCCCM'], ['Spread out', 'noDouble', 40], ['Monk mode', 'noCoinScore', 150],
+    ['Unstoppable', 'row', 20], ['Around the world', 'score', 250], ['Full cast', 'tourScore', 50],
+    ['Treasure hunter', 'runCoins', 50], ['Elite status', 'runs', 250], ['Into orbit', 'score', 300]
+  ];
+  const GLOBAL_IDS = G.map(([name, type, v], i) => {
+    const id = `all-x${i + 1}`;
+    if (type === 'pattern') return addChallenge({ id, who: 'all', name, type, pattern: v });
+    const desc = {
+      score: `Score ${v} points in one run.`,
+      runCoins: `Collect ${v} coins in one run.`,
+      noCoinScore: `Score ${v} points in one run without collecting a single coin.`,
+      row: `Collect ${v} coins in a row.`,
+      tourScore: `Score ${v} or more in a run with every character.`,
+      runs: `Finish ${v} runs with any character.`,
+      speed: `Score ${v} points in the first ${v} seconds of a run.`,
+      noDouble: `Score ${v} without ever collecting two coins in a row.`
+    }[type];
+    return addChallenge(Object.assign({ id, who: 'all', name, type, value: v, desc }, type === 'speed' ? { limit: v } : {}));
+  });
+  // Rewards rotate: trail, coin style, place.
+  const rewardIds = kind => GLOBAL_IDS.filter((_, i) => i % 3 === kind);
+  const PLACE_REWARD_IDS = rewardIds(2);
+
+  const TRAIL_KINDS = ['fizz', 'fire', 'sparkle', 'hearts', 'pixels', 'cash', 'snowstorm', 'comet', 'lightning'];
+  const genTrails = [];
+  for (let r = 0; r < 5 && genTrails.length < 40; r++) {
+    TRAIL_KINDS.forEach((kind, k) => {
+      if (genTrails.length >= 40) return;
+      const st = STYLES[(k + r * 2) % STYLES.length];
+      const baseName = TRAILS.find(t => t.id === kind).name;
+      genTrails.push({ id: `${kind}-${st.key}`, kind, v: forced(st), name: `${baseName} (${st.n})` });
+    });
+  }
+  const trailRewardSlots = [4, 9, 14, 19, 24, 29, 34, 39];
+  price(genTrails, ladder(40, 150, 20000), trailRewardSlots);
+  trailRewardSlots.forEach((slot, j) => { genTrails[slot].challenge = rewardIds(0)[j]; });
+  TRAILS.push(...genTrails);
+
+  const COIN_BASES = ['gold', 'silver', 'snow', 'diamond', 'crypto', 'trophycoin', 'ruby', 'globe'];
+  const COIN_STYLES = STYLES.filter(s => s.key !== 'gold');
+  const genCoins = [];
+  for (let r = 0; r < 5 && genCoins.length < 36; r++) {
+    COIN_BASES.forEach((base, k) => {
+      if (genCoins.length >= 36) return;
+      const st = COIN_STYLES[(k + r * 3) % COIN_STYLES.length];
+      const baseName = COINS.find(x => x.id === base).name;
+      genCoins.push({ id: `${base}-${st.key}`, base, v: forced(st), name: `${baseName} (${st.n})` });
+    });
+  }
+  const coinRewardSlots = [3, 7, 12, 16, 21, 25, 30, 34];
+  price(genCoins, ladder(36, 120, 18000), coinRewardSlots);
+  coinRewardSlots.forEach((slot, j) => { genCoins[slot].challenge = rewardIds(1)[j]; });
+  COINS.push(...genCoins);
+
+  // Looks up how to draw a trail or coin from its id (recoloured items point at a base kind).
+  const trailIndex = new Map(), coinIndex = new Map();
+  function resolveTrail(id) {
+    if (!trailIndex.size) for (const t of [...TRAILS, ...CREW.flatMap(c => c.sigTrails)]) trailIndex.set(t.id, { kind: t.kind || t.id, v: t.v || null });
+    return trailIndex.get(id) || { kind: id, v: null };
+  }
+  function resolveCoin(id) {
+    if (!coinIndex.size) for (const x of [...COINS, ...CREW.flatMap(c => [c.coin, ...c.coins])]) coinIndex.set(x.id, { base: x.base || x.id, v: x.v || null });
+    return coinIndex.get(id) || { base: id, v: null };
+  }
+  function drawCoinItem(c, id, r) {
+    const k = resolveCoin(id);
+    drawCoinStyle(c, k.base, r, k.v);
   }
 
   // Every lockable item, for the "new unlocks" list at game over. Items with an owner unlock from the
@@ -848,6 +1096,7 @@
     c.accs.forEach(a => a.unlock && UNLOCKABLES.push({ unlock: a.unlock, owner: c.id, label: `${a.name} (${c.name})` }));
     c.sigTrails.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, owner: c.id, label: `${tr.name} trail (${c.name})` }));
     UNLOCKABLES.push({ unlock: c.coin.unlock, owner: c.id, label: `${c.coin.name} coin (${c.name})` });
+    c.coins.forEach(co => co.unlock && UNLOCKABLES.push({ unlock: co.unlock, owner: c.id, label: `${co.name} coin (${c.name})` }));
   }
   TRAILS.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, label: `${tr.name} trail` }));
   COINS.forEach(co => co.unlock && UNLOCKABLES.push({ unlock: co.unlock, label: `${co.name} coin` }));
@@ -969,6 +1218,46 @@
   const purchasesAvailable = () => CONFIG.testMode || typeof (window.JetpackersHooks || {}).purchase === 'function';
   // Where there is no store, character worlds unlock at a lifetime coin total instead.
   THEMES.filter(x => x.kind === 'bundle').forEach((x, i) => { x.coinPrice = 450 + i * 75; });
+
+  // Expansion: 52 more places, each a time-of-day or mood version of a hand-made place.
+  // Gameplay is identical in all of them; only the colours, weather and tune change.
+  const PLACE_STYLES = {
+    dawn: { n: 'at Dawn', key: 'p-dawn', rot: -12, lit: 0.05, sat: 0.05 },
+    dusk: { n: 'at Dusk', key: 'p-dusk', rot: 18, lit: -0.1, sat: 0.08 },
+    night: { n: 'at Night', key: 'p-night', lit: -0.3, sat: -0.1, moon: true },
+    neon: { n: 'in Neon', key: 'p-neon', sat: 0.4, lit: 0.02 },
+    mono: { n: 'in Mono', key: 'p-mono', sat: -1 },
+    heat: { n: 'in a Heatwave', key: 'p-heat', rot: -20, sat: 0.2, lit: 0.04 },
+    frost: { n: 'in Frost', key: 'p-frost', hue: 200, satTo: 0.35, lit: 0.08 }
+  };
+  const baseTheme = id => THEMES.find(x => x.id === id);
+  function placeVariant(base, styleKey, extra) {
+    const st = PLACE_STYLES[styleKey];
+    const t = shadeDeep(base, st);
+    Object.assign(t, {
+      id: `${base.id}-${styleKey}`,
+      name: `${base.name} ${st.n}`,
+      desc: `${base.desc.replace(/\.$/, '')}, ${st.n.replace(/^(at|in) (a )?/, '').toLowerCase()} edition.`
+    }, extra);
+    if (st.moon) t.orb = ['moon', '#f6ecd9'];
+    if (t.music) t.music = Object.assign({}, t.music, { transpose: t.music.transpose + (st.lit && st.lit < 0 ? -3 : 2) });
+    return t;
+  }
+  const morePlaces = [];
+  // 24 more character worlds: each world at dawn, dusk, night and in neon. They come with that world pack.
+  THEMES.filter(x => x.kind === 'bundle').forEach(w => ['dawn', 'dusk', 'night', 'neon'].forEach((k, j) =>
+    morePlaces.push(placeVariant(w, k, { coinPrice: w.coinPrice + (j + 1) * 350 }))));
+  // 8 more places earned with lifetime coins
+  const coinPlaces = [['snow', 'mono'], ['snow', 'frost'], ['snow', 'neon'], ['snow', 'heat'], ['sunset', 'neon'], ['sunset', 'mono'], ['redeye', 'neon'], ['redeye', 'frost']]
+    .map(([b, k]) => placeVariant(baseTheme(b), k));
+  ladder(8, 600, 15000).forEach((n, i) => { coinPlaces[i].unlock = n; });
+  morePlaces.push(...coinPlaces);
+  // 12 more limited-time places: each seasonal place at dusk, at night and in neon, in the same months
+  THEMES.filter(x => x.kind === 'season').forEach(sp => ['dusk', 'night', 'neon'].forEach(k => morePlaces.push(placeVariant(sp, k))));
+  // 8 places won by challenges
+  [['snow', 'dawn'], ['snow', 'dusk'], ['sunset', 'frost'], ['redeye', 'heat'], ['gym', 'mono'], ['fest', 'mono'], ['arcade', 'mono'], ['coffee', 'mono']]
+    .forEach(([b, k], i) => morePlaces.push(placeVariant(baseTheme(b), k, { kind: 'challenge', challenge: PLACE_REWARD_IDS[i], hero: undefined, coinPrice: undefined })));
+  THEMES.push(...morePlaces);
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   let owned = new Set(), collected = new Set(), themeId = 'snow', trialTheme = null, trialPending = null;
   try { owned = new Set(JSON.parse(localStorage.getItem('jetpackersOwned') || '[]')); } catch (e) {}
@@ -978,6 +1267,7 @@
   function themeOpen(th) {
     if (th.kind === 'bundle') return owned.has('bundle-' + th.hero) || (!purchasesAvailable() && bank >= th.coinPrice);
     if (th.kind === 'coins') return bank >= th.unlock;
+    if (th.kind === 'challenge') return doneCh.has(th.challenge);
     if (th.kind === 'season') return inSeason(th) || collected.has(th.id);
     return true;
   }
@@ -990,7 +1280,7 @@
   if (!purchasesAvailable()) THEMES.filter(x => x.kind === 'bundle').forEach(x => UNLOCKABLES.push({ unlock: x.coinPrice, label: `${x.name} place` }));
 
   const trailOptions = p => [...p.sigTrails.map(x => Object.assign({ sig: true }, x)), ...TRAILS];
-  const coinOptions = p => [...COINS, Object.assign({ sig: true }, p.coin)];
+  const coinOptions = p => [...COINS, ...[p.coin, ...p.coins].map(x => Object.assign({ sig: true }, x))];
 
   function lookState(p) {
     const st = looks[p.id] || {};
@@ -1008,7 +1298,10 @@
     const st = lookState(p);
     const L = Object.assign({}, p, p.outfits[st.o].o);
     L.skin = SKINS[st.s] || p.skin;
-    L.acc = st.a;
+    // Recoloured extras draw as their base extra with a colour style.
+    const accItem = p.accs.find(a => a.id === st.a);
+    L.acc = accItem ? (accItem.base || accItem.id) : 'none';
+    L.accV = (accItem && accItem.v) || null;
     L.trail = st.tr;
     L.coinStyle = st.c;
     return L;
@@ -1022,7 +1315,11 @@
   let hist = [], curRow = 0, doubled = false, runTime = 0, runDone = [], lastMilestone = 0;
   let waiting = false, paused = false, spawned = 0, tutorialDone = false;
   // Per-run ad state: one continue per run, one coin doubling per run, coins already added to the bank.
-  let continued = false, coinsDoubled = false, banked = 0;
+  let continued = false, coinsDoubled = false, banked = 0, runCounted = false;
+  // Runs finished (in total and per character), each character's best score, and the tracked challenge.
+  let runStats = { total: 0, by: {}, best: {} }, trackedId = null;
+  try { runStats = Object.assign(runStats, JSON.parse(localStorage.getItem('jetpackersRunStats') || '{}')); } catch (e) {}
+  try { trackedId = localStorage.getItem('jetpackersTracked'); } catch (e) {}
   // Set by the game site (its mute setting or while an ad plays). In-game sound toggles never override it.
   let gameMuted = false;
   // Store-screenshot support (see capture.mjs). Inactive in normal play.
@@ -1701,7 +1998,8 @@
   }
 
   // ---------- Coin styles (drawn centred on 0,0) ----------
-  function drawCoinStyle(c, id, r) {
+  function drawCoinStyle(c, id, r, v) {
+    const col = x => (v ? shade(x, v) : x);
     const lw = Math.max(1.2, r * 0.2);
     const txt = (s, col, scale = 1.1) => {
       c.fillStyle = col;
@@ -1720,40 +2018,40 @@
         c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2);
         c.lineWidth = lw * 1.2; c.strokeStyle = INK; c.stroke();
         c.beginPath(); c.arc(0, 0, r - lw * 0.6, 0, Math.PI * 2);
-        c.lineWidth = lw * 0.5; c.strokeStyle = '#f7c531'; c.stroke();
+        c.lineWidth = lw * 0.5; c.strokeStyle = col('#f7c531'); c.stroke();
         break;
-      case 'silver': disc('#d7dde4'); txt('$', '#6b7480'); break;
+      case 'silver': disc(col('#d7dde4')); txt('$', col('#6b7480')); break;
       case 'snow':
-        disc('#bfe6ff');
+        disc(col('#bfe6ff'));
         for (let k = 0; k < 3; k++) {
           const a = k * Math.PI / 3;
-          line(c, Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62, -Math.cos(a) * r * 0.62, -Math.sin(a) * r * 0.62, r * 0.16, '#ffffff');
+          line(c, Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62, -Math.cos(a) * r * 0.62, -Math.sin(a) * r * 0.62, r * 0.16, col('#ffffff'));
         }
         break;
       case 'diamond':
         c.beginPath();
         c.moveTo(-r * 0.6, -r * 0.6); c.lineTo(r * 0.6, -r * 0.6); c.lineTo(r, -r * 0.15);
         c.lineTo(0, r); c.lineTo(-r, -r * 0.15); c.closePath();
-        paint(c, '#9ff3ff', lw);
+        paint(c, col('#9ff3ff'), lw);
         line(c, -r, -r * 0.15, r, -r * 0.15, lw * 0.5);
         line(c, -r * 0.25, -r * 0.6, 0, r, lw * 0.5);
         line(c, r * 0.25, -r * 0.6, 0, r, lw * 0.5);
         break;
       case 'crypto': {
-        disc('#8a5cd6');
+        disc(col('#8a5cd6'));
         c.beginPath();
         for (let k = 0; k < 6; k++) {
           const a = Math.PI / 6 + k * Math.PI / 3;
           k ? c.lineTo(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55) : c.moveTo(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55);
         }
-        c.closePath(); c.lineWidth = r * 0.16; c.strokeStyle = '#ffffff'; c.stroke();
+        c.closePath(); c.lineWidth = r * 0.16; c.strokeStyle = col('#ffffff'); c.stroke();
         break;
       }
       case 'plate45':
-        disc('#2a2a2a');
-        c.beginPath(); c.arc(0, 0, r * 0.72, 0, Math.PI * 2); c.lineWidth = r * 0.1; c.strokeStyle = '#555555'; c.stroke();
-        disc('#9a9a9a', r * 0.22);
-        c.fillStyle = '#ffffff';
+        disc(col('#2a2a2a'));
+        c.beginPath(); c.arc(0, 0, r * 0.72, 0, Math.PI * 2); c.lineWidth = r * 0.1; c.strokeStyle = col('#555555'); c.stroke();
+        disc(col('#9a9a9a'), r * 0.22);
+        c.fillStyle = col('#ffffff');
         c.font = `900 ${r * 0.5}px Nunito, sans-serif`;
         c.textAlign = 'center'; c.textBaseline = 'middle';
         c.fillText('45', 0, -r * 0.5);
@@ -1766,34 +2064,34 @@
           const rad = k % 2 ? r * 0.86 : r;
           k ? c.lineTo(Math.cos(a) * rad, Math.sin(a) * rad) : c.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
         }
-        c.closePath(); paint(c, '#1d9bf0', lw);
+        c.closePath(); paint(c, col('#1d9bf0'), lw);
         c.beginPath(); c.moveTo(-r * 0.4, 0); c.lineTo(-r * 0.1, r * 0.3); c.lineTo(r * 0.45, -r * 0.3);
-        c.lineWidth = r * 0.2; c.strokeStyle = '#ffffff'; c.stroke();
+        c.lineWidth = r * 0.2; c.strokeStyle = col('#ffffff'); c.stroke();
         break;
       case 'bull':
-        disc('#3fae5a');
-        arrowUp(c, 0, 0, r * 0.6); c.fillStyle = '#ffffff'; c.fill();
+        disc(col('#3fae5a'));
+        arrowUp(c, 0, 0, r * 0.6); c.fillStyle = col('#ffffff'); c.fill();
         break;
       case 'xpcoin':
-        disc('#3be37a');
-        txt('XP', '#0b5a2a', 0.75);
+        disc(col('#3be37a'));
+        txt('XP', col('#0b5a2a'), 0.75);
         break;
       case 'vinylcoin':
-        disc('#151515');
-        c.beginPath(); c.arc(0, 0, r * 0.7, 0, Math.PI * 2); c.lineWidth = r * 0.06; c.strokeStyle = '#444444'; c.stroke();
-        disc('#d8463b', r * 0.32);
+        disc(col('#151515'));
+        c.beginPath(); c.arc(0, 0, r * 0.7, 0, Math.PI * 2); c.lineWidth = r * 0.06; c.strokeStyle = col('#444444'); c.stroke();
+        disc(col('#d8463b'), r * 0.32);
         c.beginPath(); c.arc(0, 0, r * 0.07, 0, Math.PI * 2); c.fillStyle = INK; c.fill();
         break;
       case 'medalcoin':
         c.beginPath(); c.moveTo(-r * 0.55, -r * 1.5); c.lineTo(-r * 0.1, -r * 0.7); c.lineTo(r * 0.1, -r * 0.7); c.lineTo(r * 0.55, -r * 1.5); c.closePath();
-        paint(c, '#3c7fd1', lw * 0.7);
-        disc('#f7c531');
-        star5(c, 0, r * 0.05, r * 0.5, r * 0.22); c.fillStyle = '#c58f00'; c.fill();
+        paint(c, col('#3c7fd1'), lw * 0.7);
+        disc(col('#f7c531'));
+        star5(c, 0, r * 0.05, r * 0.5, r * 0.22); c.fillStyle = col('#c58f00'); c.fill();
         break;
       case 'trophycoin':
-        disc('#f7c531');
+        disc(col('#f7c531'));
         c.beginPath(); c.moveTo(-r * 0.4, -r * 0.5); c.lineTo(r * 0.4, -r * 0.5); c.lineTo(r * 0.25, r * 0.05); c.lineTo(-r * 0.25, r * 0.05); c.closePath();
-        c.fillStyle = '#c58f00'; c.fill();
+        c.fillStyle = col('#c58f00'); c.fill();
         c.fillRect(-r * 0.07, r * 0.05, r * 0.14, r * 0.25);
         c.fillRect(-r * 0.3, r * 0.3, r * 0.6, r * 0.14);
         break;
@@ -1801,7 +2099,7 @@
         c.beginPath();
         c.moveTo(-r * 0.55, -r * 0.7); c.lineTo(r * 0.55, -r * 0.7); c.lineTo(r, -r * 0.1);
         c.lineTo(0, r); c.lineTo(-r, -r * 0.1); c.closePath();
-        paint(c, '#e8443a', lw);
+        paint(c, col('#e8443a'), lw);
         line(c, -r, -r * 0.1, r, -r * 0.1, lw * 0.5);
         line(c, -r * 0.2, -r * 0.7, 0, r, lw * 0.5);
         line(c, r * 0.2, -r * 0.7, 0, r, lw * 0.5);
@@ -1809,10 +2107,10 @@
         c.beginPath(); c.moveTo(-r * 0.45, -r * 0.6); c.lineTo(-r * 0.2, -r * 0.6); c.lineTo(-r * 0.45, -r * 0.2); c.closePath(); c.fill();
         break;
       case 'globe':
-        disc('#3c7fd1');
+        disc(col('#3c7fd1'));
         c.save();
         c.beginPath(); c.arc(0, 0, r - lw / 2, 0, Math.PI * 2); c.clip();
-        c.fillStyle = '#3fae5a';
+        c.fillStyle = col('#3fae5a');
         c.beginPath(); c.ellipse(-r * 0.35, -r * 0.25, r * 0.35, r * 0.25, 0.5, 0, Math.PI * 2); c.fill();
         c.beginPath(); c.ellipse(r * 0.3, r * 0.3, r * 0.3, r * 0.4, -0.3, 0, Math.PI * 2); c.fill();
         c.beginPath(); c.ellipse(r * 0.45, -r * 0.5, r * 0.2, r * 0.12, 0, 0, Math.PI * 2); c.fill();
@@ -1820,7 +2118,7 @@
         c.beginPath(); c.ellipse(0, 0, r * 0.45, r - lw / 2, 0, 0, Math.PI * 2);
         c.lineWidth = r * 0.06; c.strokeStyle = 'rgba(255,255,255,0.7)'; c.stroke();
         break;
-      default: disc('#f7c531'); txt('$', '#9a6b00');
+      default: disc(col('#f7c531')); txt('$', col('#9a6b00'));
     }
   }
 
@@ -1870,15 +2168,16 @@
 
   // Accessories, drawn in layers: 'back' behind everything, 'body' over the torso, 'head' over hair, 'face' over eyes.
   function drawAcc(c, p, r, lw, layer, hy, ey, wide) {
+    const col = x => (p.accV ? shade(x, p.accV) : x);
     const a = p.acc;
     if (!a || a === 'none') return;
     if (layer === 'back') {
       if (a === 'ringlight') {
         c.beginPath(); c.arc(0, hy, r * 1.55, 0, Math.PI * 2);
         c.lineWidth = r * 0.38; c.strokeStyle = INK; c.stroke();
-        c.lineWidth = r * 0.24; c.strokeStyle = '#ffffff'; c.stroke();
+        c.lineWidth = r * 0.24; c.strokeStyle = col('#ffffff'); c.stroke();
       } else if (a === 'aura') {
-        ['#ff2bd6', '#00e5ff', '#3be37a'].forEach((col, i) => {
+        [col('#ff2bd6'), col('#00e5ff'), col('#3be37a')].forEach((col, i) => {
           c.beginPath(); c.ellipse(0, r * 0.25, r * (1.65 - i * 0.14), r * (2.35 - i * 0.14), 0, 0, Math.PI * 2);
           c.lineWidth = r * 0.12; c.strokeStyle = col; c.globalAlpha = 0.65; c.stroke(); c.globalAlpha = 1;
         });
@@ -1886,40 +2185,40 @@
     } else if (layer === 'body') {
       if (a === 'chain') {
         c.beginPath(); c.arc(0, r * 0.15, r * 0.5, 0.18 * Math.PI, 0.82 * Math.PI);
-        c.lineWidth = r * 0.12; c.strokeStyle = '#e8b830'; c.stroke();
-        c.beginPath(); c.arc(0, r * 0.68, r * 0.13, 0, Math.PI * 2); paint(c, '#f7c531', lw * 0.6);
+        c.lineWidth = r * 0.12; c.strokeStyle = col('#e8b830'); c.stroke();
+        c.beginPath(); c.arc(0, r * 0.68, r * 0.13, 0, Math.PI * 2); paint(c, col('#f7c531'), lw * 0.6);
       } else if (a === 'lbelt') {
-        rr(c, -r * wide, r * 1.0, r * wide * 2, r * 0.3, r * 0.06); paint(c, '#5a3620', lw * 0.8);
-        rr(c, -r * 0.18, r * 1.02, r * 0.36, r * 0.26, r * 0.04); paint(c, '#c8c8c8', lw * 0.6);
+        rr(c, -r * wide, r * 1.0, r * wide * 2, r * 0.3, r * 0.06); paint(c, col('#5a3620'), lw * 0.8);
+        rr(c, -r * 0.18, r * 1.02, r * 0.36, r * 0.26, r * 0.04); paint(c, col('#c8c8c8'), lw * 0.6);
       } else if (a === 'champ') {
-        rr(c, -r * wide - r * 0.05, r * 0.95, r * wide * 2 + r * 0.1, r * 0.32, r * 0.08); paint(c, '#b8372f', lw * 0.8);
-        c.beginPath(); c.ellipse(0, r * 1.1, r * 0.5, r * 0.32, 0, 0, Math.PI * 2); paint(c, '#f7c531', lw * 0.8);
-        c.beginPath(); c.ellipse(0, r * 1.1, r * 0.2, r * 0.13, 0, 0, Math.PI * 2); paint(c, '#e8443a', lw * 0.5);
+        rr(c, -r * wide - r * 0.05, r * 0.95, r * wide * 2 + r * 0.1, r * 0.32, r * 0.08); paint(c, col('#b8372f'), lw * 0.8);
+        c.beginPath(); c.ellipse(0, r * 1.1, r * 0.5, r * 0.32, 0, 0, Math.PI * 2); paint(c, col('#f7c531'), lw * 0.8);
+        c.beginPath(); c.ellipse(0, r * 1.1, r * 0.2, r * 0.13, 0, 0, Math.PI * 2); paint(c, col('#e8443a'), lw * 0.5);
       } else if (a === 'watch') {
-        c.beginPath(); c.arc(r * (wide + 0.05), r * 1.08, r * 0.14, 0, Math.PI * 2); paint(c, '#f7c531', lw * 0.7);
+        c.beginPath(); c.arc(r * (wide + 0.05), r * 1.08, r * 0.14, 0, Math.PI * 2); paint(c, col('#f7c531'), lw * 0.7);
       } else if (a === 'briefcase') {
         c.beginPath(); c.arc(r * (wide + 0.35), r * 1.08, r * 0.14, Math.PI, 0); c.lineWidth = lw; c.strokeStyle = INK; c.stroke();
-        rr(c, r * (wide + 0.05), r * 1.08, r * 0.6, r * 0.45, r * 0.06); paint(c, '#6b3f22', lw * 0.8);
+        rr(c, r * (wide + 0.05), r * 1.08, r * 0.6, r * 0.45, r * 0.06); paint(c, col('#6b3f22'), lw * 0.8);
         line(c, r * (wide + 0.05), r * 1.25, r * (wide + 0.65), r * 1.25, lw * 0.5);
       } else if (a === 'controller') {
-        rr(c, -r * 0.52, r * 0.72, r * 1.04, r * 0.42, r * 0.2); paint(c, '#444444', lw * 0.8);
-        c.fillStyle = '#ffffff';
+        rr(c, -r * 0.52, r * 0.72, r * 1.04, r * 0.42, r * 0.2); paint(c, col('#444444'), lw * 0.8);
+        c.fillStyle = col('#ffffff');
         c.fillRect(-r * 0.36, r * 0.9, r * 0.22, r * 0.06); c.fillRect(-r * 0.28, r * 0.82, r * 0.06, r * 0.22);
-        c.beginPath(); c.arc(r * 0.22, r * 0.86, r * 0.06, 0, Math.PI * 2); c.fillStyle = '#e8443a'; c.fill();
-        c.beginPath(); c.arc(r * 0.34, r * 0.98, r * 0.06, 0, Math.PI * 2); c.fillStyle = '#3be37a'; c.fill();
+        c.beginPath(); c.arc(r * 0.22, r * 0.86, r * 0.06, 0, Math.PI * 2); c.fillStyle = col('#e8443a'); c.fill();
+        c.beginPath(); c.arc(r * 0.34, r * 0.98, r * 0.06, 0, Math.PI * 2); c.fillStyle = col('#3be37a'); c.fill();
       } else if (a === 'tote') {
-        line(c, -r * 0.4, r * 0.25, r * 0.55, r * 1.0, r * 0.08, '#d9c9a3');
-        rr(c, r * 0.35, r * 0.95, r * 0.62, r * 0.55, r * 0.05); paint(c, '#efe4cc', lw * 0.8);
-        c.beginPath(); c.arc(r * 0.66, r * 1.22, r * 0.1, 0, Math.PI * 2); c.fillStyle = '#3fae5a'; c.fill();
+        line(c, -r * 0.4, r * 0.25, r * 0.55, r * 1.0, r * 0.08, col('#d9c9a3'));
+        rr(c, r * 0.35, r * 0.95, r * 0.62, r * 0.55, r * 0.05); paint(c, col('#efe4cc'), lw * 0.8);
+        c.beginPath(); c.arc(r * 0.66, r * 1.22, r * 0.1, 0, Math.PI * 2); c.fillStyle = col('#3fae5a'); c.fill();
       } else if (a === 'camera') {
         c.beginPath(); c.arc(0, r * 0.2, r * 0.5, 0.1 * Math.PI, 0.9 * Math.PI); c.lineWidth = r * 0.06; c.strokeStyle = INK; c.stroke();
-        rr(c, -r * 0.36, r * 0.5, r * 0.72, r * 0.44, r * 0.06); paint(c, '#2a2a2a', lw * 0.7);
-        c.beginPath(); c.arc(0, r * 0.72, r * 0.15, 0, Math.PI * 2); paint(c, '#777777', lw * 0.5);
-        c.fillStyle = '#e8e8e8'; c.fillRect(-r * 0.3, r * 0.55, r * 0.14, r * 0.08);
+        rr(c, -r * 0.36, r * 0.5, r * 0.72, r * 0.44, r * 0.06); paint(c, col('#2a2a2a'), lw * 0.7);
+        c.beginPath(); c.arc(0, r * 0.72, r * 0.15, 0, Math.PI * 2); paint(c, col('#777777'), lw * 0.5);
+        c.fillStyle = col('#e8e8e8'); c.fillRect(-r * 0.3, r * 0.55, r * 0.14, r * 0.08);
       } else if (a === 'medal') {
         c.beginPath(); c.moveTo(-r * 0.25, r * 0.22); c.lineTo(0, r * 0.62); c.lineTo(r * 0.25, r * 0.22);
-        c.lineWidth = r * 0.12; c.strokeStyle = '#3c7fd1'; c.stroke();
-        c.beginPath(); c.arc(0, r * 0.74, r * 0.17, 0, Math.PI * 2); paint(c, '#f7c531', lw * 0.6);
+        c.lineWidth = r * 0.12; c.strokeStyle = col('#3c7fd1'); c.stroke();
+        c.beginPath(); c.arc(0, r * 0.74, r * 0.17, 0, Math.PI * 2); paint(c, col('#f7c531'), lw * 0.6);
       } else if (a === 'trophy') {
         const tx = r * (wide + 0.2), ty = r * 0.3;
         for (const s of [-1, 1]) {
@@ -1927,21 +2226,21 @@
           c.lineWidth = lw * 0.8; c.strokeStyle = INK; c.stroke();
         }
         c.beginPath(); c.moveTo(tx - r * 0.32, ty); c.lineTo(tx + r * 0.32, ty); c.lineTo(tx + r * 0.2, ty + r * 0.42); c.lineTo(tx - r * 0.2, ty + r * 0.42); c.closePath();
-        paint(c, '#f7c531', lw * 0.7);
-        c.beginPath(); c.rect(tx - r * 0.06, ty + r * 0.42, r * 0.12, r * 0.2); paint(c, '#f7c531', lw * 0.6);
-        rr(c, tx - r * 0.22, ty + r * 0.62, r * 0.44, r * 0.13, r * 0.03); paint(c, '#6b3f22', lw * 0.6);
+        paint(c, col('#f7c531'), lw * 0.7);
+        c.beginPath(); c.rect(tx - r * 0.06, ty + r * 0.42, r * 0.12, r * 0.2); paint(c, col('#f7c531'), lw * 0.6);
+        rr(c, tx - r * 0.22, ty + r * 0.62, r * 0.44, r * 0.13, r * 0.03); paint(c, col('#6b3f22'), lw * 0.6);
       } else if (a === 'selfiestick') {
-        line(c, r * 0.9, r * 0.95, r * 1.65, -r * 0.45, r * 0.08, '#444444');
-        rr(c, r * 1.5, -r * 0.85, r * 0.32, r * 0.5, r * 0.05); paint(c, '#222222', lw * 0.7);
-        c.fillStyle = '#9fd8f0'; c.fillRect(r * 1.55, -r * 0.79, r * 0.22, r * 0.36);
+        line(c, r * 0.9, r * 0.95, r * 1.65, -r * 0.45, r * 0.08, col('#444444'));
+        rr(c, r * 1.5, -r * 0.85, r * 0.32, r * 0.5, r * 0.05); paint(c, col('#222222'), lw * 0.7);
+        c.fillStyle = col('#9fd8f0'); c.fillRect(r * 1.55, -r * 0.79, r * 0.22, r * 0.36);
       } else if (a === 'cashstack') {
-        for (let k = 0; k < 3; k++) { rr(c, r * (wide - 0.05), r * (1.05 - k * 0.15), r * 0.62, r * 0.17, r * 0.03); paint(c, '#86d17a', lw * 0.6); }
-        c.fillStyle = '#f7c531'; c.fillRect(r * (wide + 0.2), r * 0.75, r * 0.1, r * 0.47);
+        for (let k = 0; k < 3; k++) { rr(c, r * (wide - 0.05), r * (1.05 - k * 0.15), r * 0.62, r * 0.17, r * 0.03); paint(c, col('#86d17a'), lw * 0.6); }
+        c.fillStyle = col('#f7c531'); c.fillRect(r * (wide + 0.2), r * 0.75, r * 0.1, r * 0.47);
       } else if (a === 'pixelsword') {
         const sx = r * (wide + 0.15);
-        c.beginPath(); c.rect(sx - r * 0.08, -r * 0.55, r * 0.16, r * 1.1); paint(c, '#9fd8f0', lw * 0.7);
-        c.beginPath(); c.rect(sx - r * 0.26, r * 0.55, r * 0.52, r * 0.1); paint(c, '#6b3f22', lw * 0.6);
-        c.beginPath(); c.rect(sx - r * 0.06, r * 0.65, r * 0.12, r * 0.28); paint(c, '#5b3fa8', lw * 0.6);
+        c.beginPath(); c.rect(sx - r * 0.08, -r * 0.55, r * 0.16, r * 1.1); paint(c, col('#9fd8f0'), lw * 0.7);
+        c.beginPath(); c.rect(sx - r * 0.26, r * 0.55, r * 0.52, r * 0.1); paint(c, col('#6b3f22'), lw * 0.6);
+        c.beginPath(); c.rect(sx - r * 0.06, r * 0.65, r * 0.12, r * 0.28); paint(c, col('#5b3fa8'), lw * 0.6);
       } else if (a === 'pourover') {
         const px2 = r * (wide + 0.18), py2 = r * 0.6;
         for (const s of [-1, 1]) {
@@ -1950,41 +2249,41 @@
           c.lineWidth = lw * 0.5; c.strokeStyle = 'rgba(34,34,34,0.5)'; c.stroke();
         }
         c.beginPath(); c.moveTo(px2 - r * 0.2, py2); c.lineTo(px2 + r * 0.2, py2); c.lineTo(px2 + r * 0.15, py2 + r * 0.45); c.lineTo(px2 - r * 0.15, py2 + r * 0.45); c.closePath();
-        paint(c, '#ffffff', lw * 0.7);
-        c.fillStyle = '#8a5a32'; c.fillRect(px2 - r * 0.17, py2 + r * 0.15, r * 0.34, r * 0.12);
+        paint(c, col('#ffffff'), lw * 0.7);
+        c.fillStyle = col('#8a5a32'); c.fillRect(px2 - r * 0.17, py2 + r * 0.15, r * 0.34, r * 0.12);
       } else if (a === 'finishtape') {
         c.beginPath(); c.moveTo(-r * 1.3, r * 0.55); c.lineTo(r * 1.3, r * 0.95); c.lineTo(r * 1.65, r * 1.25);
-        c.lineWidth = r * 0.14; c.strokeStyle = '#d8463b'; c.stroke();
+        c.lineWidth = r * 0.14; c.strokeStyle = col('#d8463b'); c.stroke();
       }
     } else if (layer === 'head') {
       if (a === 'claw') {
-        rr(c, -r * 0.32, hy - r * 1.08, r * 0.64, r * 0.24, r * 0.08); paint(c, '#c9a25a', lw * 0.7);
+        rr(c, -r * 0.32, hy - r * 1.08, r * 0.64, r * 0.24, r * 0.08); paint(c, col('#c9a25a'), lw * 0.7);
         for (let k = -2; k <= 2; k++) line(c, k * r * 0.11, hy - r * 0.86, k * r * 0.11, hy - r * 0.76, lw * 0.5);
       } else if (a === 'bucket') {
-        c.beginPath(); c.ellipse(0, hy - r * 0.45, r * 1.25, r * 0.26, 0, 0, Math.PI * 2); paint(c, '#e9d8a6', lw);
-        rr(c, -r * 0.78, hy - r * 1.18, r * 1.56, r * 0.76, r * 0.32); paint(c, '#e9d8a6', lw);
+        c.beginPath(); c.ellipse(0, hy - r * 0.45, r * 1.25, r * 0.26, 0, 0, Math.PI * 2); paint(c, col('#e9d8a6'), lw);
+        rr(c, -r * 0.78, hy - r * 1.18, r * 1.56, r * 0.76, r * 0.32); paint(c, col('#e9d8a6'), lw);
       } else if (a === 'crown') {
         c.beginPath();
         c.moveTo(-r * 0.55, hy - r * 0.82);
         c.lineTo(-r * 0.6, hy - r * 1.4); c.lineTo(-r * 0.3, hy - r * 1.1); c.lineTo(0, hy - r * 1.5);
         c.lineTo(r * 0.3, hy - r * 1.1); c.lineTo(r * 0.6, hy - r * 1.4); c.lineTo(r * 0.55, hy - r * 0.82);
-        c.closePath(); paint(c, '#f7c531', lw);
-        c.beginPath(); c.arc(0, hy - r * 1.0, r * 0.08, 0, Math.PI * 2); c.fillStyle = '#d8463b'; c.fill();
+        c.closePath(); paint(c, col('#f7c531'), lw);
+        c.beginPath(); c.arc(0, hy - r * 1.0, r * 0.08, 0, Math.PI * 2); c.fillStyle = col('#d8463b'); c.fill();
       } else if (a === 'catears') {
         for (const s of [-1, 1]) {
           c.beginPath(); c.moveTo(s * r * 0.8, hy - r * 0.72); c.lineTo(s * r * 0.62, hy - r * 1.42); c.lineTo(s * r * 0.25, hy - r * 1.02); c.closePath();
-          paint(c, '#ff9bd3', lw);
+          paint(c, col('#ff9bd3'), lw);
         }
       } else if (a === 'headphones') {
         c.beginPath(); c.arc(0, hy, r * 1.08, Math.PI * 1.1, Math.PI * 1.9); c.lineWidth = r * 0.16; c.strokeStyle = INK; c.stroke();
-        for (const s of [-1, 1]) { c.beginPath(); c.ellipse(s * r * 1.0, hy - r * 0.05, r * 0.2, r * 0.32, 0, 0, Math.PI * 2); paint(c, '#d8463b', lw); }
+        for (const s of [-1, 1]) { c.beginPath(); c.ellipse(s * r * 1.0, hy - r * 0.05, r * 0.2, r * 0.32, 0, 0, Math.PI * 2); paint(c, col('#d8463b'), lw); }
       } else if (a === 'laurel') {
         for (const s of [-1, 1]) {
           for (let k = 0; k < 5; k++) {
             const ang = Math.PI * (s < 0 ? 1.15 + k * 0.08 : 1.85 - k * 0.08);
             c.beginPath();
             c.ellipse(Math.cos(ang) * r * 1.02, hy + Math.sin(ang) * r * 1.02, r * 0.17, r * 0.08, ang + Math.PI / 2, 0, Math.PI * 2);
-            paint(c, '#3fae5a', lw * 0.5);
+            paint(c, col('#3fae5a'), lw * 0.5);
           }
         }
       } else if (a === 'verified') {
@@ -1995,24 +2294,24 @@
       }
     } else if (layer === 'face') {
       if (a === 'aviators') {
-        for (const s of [-1, 1]) { c.beginPath(); c.ellipse(s * r * 0.3, ey + r * 0.03, r * 0.3, r * 0.26, 0, 0, Math.PI * 2); paint(c, '#333333', lw * 0.7); }
+        for (const s of [-1, 1]) { c.beginPath(); c.ellipse(s * r * 0.3, ey + r * 0.03, r * 0.3, r * 0.26, 0, 0, Math.PI * 2); paint(c, col('#333333'), lw * 0.7); }
         line(c, -r * 0.05, ey - r * 0.1, r * 0.05, ey - r * 0.1, lw * 0.7);
-        line(c, -r * 0.4, ey - r * 0.08, -r * 0.25, ey - r * 0.12, lw * 0.6, '#ffffff');
+        line(c, -r * 0.4, ey - r * 0.08, -r * 0.25, ey - r * 0.12, lw * 0.6, col('#ffffff'));
       } else if (a === 'wayfarers') {
-        for (const s of [-1, 1]) { rr(c, s * r * 0.28 - r * 0.27, ey - r * 0.18, r * 0.54, r * 0.36, r * 0.08); paint(c, '#111111', lw * 0.6); }
+        for (const s of [-1, 1]) { rr(c, s * r * 0.28 - r * 0.27, ey - r * 0.18, r * 0.54, r * 0.36, r * 0.08); paint(c, col('#111111'), lw * 0.6); }
       } else if (a === 'roundglasses') {
-        for (const s of [-1, 1]) { c.beginPath(); c.arc(s * r * 0.28, ey, r * 0.33, 0, Math.PI * 2); c.lineWidth = lw * 0.9; c.strokeStyle = '#8a5a32'; c.stroke(); }
+        for (const s of [-1, 1]) { c.beginPath(); c.arc(s * r * 0.28, ey, r * 0.33, 0, Math.PI * 2); c.lineWidth = lw * 0.9; c.strokeStyle = col('#8a5a32'); c.stroke(); }
       } else if (a === 'raceshades') {
-        rr(c, -r * 0.64, ey - r * 0.2, r * 1.28, r * 0.38, r * 0.18); paint(c, '#ff7a3d', lw * 0.7);
-        line(c, -r * 0.4, ey - r * 0.08, -r * 0.1, ey - r * 0.08, lw * 0.6, '#fff3c4');
+        rr(c, -r * 0.64, ey - r * 0.2, r * 1.28, r * 0.38, r * 0.18); paint(c, col('#ff7a3d'), lw * 0.7);
+        line(c, -r * 0.4, ey - r * 0.08, -r * 0.1, ey - r * 0.08, lw * 0.6, col('#fff3c4'));
       } else if (a === 'mustache') {
-        c.fillStyle = '#3a2210';
+        c.fillStyle = col('#3a2210');
         c.beginPath(); c.ellipse(-r * 0.2, ey + r * 0.45, r * 0.22, r * 0.08, -0.25, 0, Math.PI * 2); c.fill();
         c.beginPath(); c.ellipse(r * 0.2, ey + r * 0.45, r * 0.22, r * 0.08, 0.25, 0, Math.PI * 2); c.fill();
-        c.beginPath(); c.arc(-r * 0.44, ey + r * 0.38, r * 0.08, 0, Math.PI * 1.3); c.lineWidth = r * 0.06; c.strokeStyle = '#3a2210'; c.stroke();
+        c.beginPath(); c.arc(-r * 0.44, ey + r * 0.38, r * 0.08, 0, Math.PI * 1.3); c.lineWidth = r * 0.06; c.strokeStyle = col('#3a2210'); c.stroke();
         c.beginPath(); c.arc(r * 0.44, ey + r * 0.38, r * 0.08, Math.PI * 1.7, Math.PI); c.stroke();
       } else if (a === 'phonecall') {
-        rr(c, r * 0.82, hy - r * 0.35, r * 0.26, r * 0.55, r * 0.06); paint(c, '#222222', lw * 0.7);
+        rr(c, r * 0.82, hy - r * 0.35, r * 0.26, r * 0.55, r * 0.06); paint(c, col('#222222'), lw * 0.7);
         c.beginPath(); c.arc(r * 0.98, hy + r * 0.25, r * 0.15, 0, Math.PI * 2); paint(c, p.skin, lw * 0.6);
       }
     }
@@ -2201,6 +2500,8 @@
   };
 
   function trailEmit(tr, id, x, y, k, burst, drift) {
+    const tv = resolveTrail(id);
+    id = tv.kind;
     if (id === 'rainbow') return;
     const n = burst ? (id === 'footprints' ? 2 : 7) : 1;
     for (let i = 0; i < n; i++) {
@@ -2208,7 +2509,7 @@
         x: x + (Math.random() - 0.5) * 6 * k, y,
         vx: -drift * 0.35 - Math.random() * 50 * k, vy: (50 + Math.random() * 90) * k,
         life: 0.55, max: 0.55, kind: id, r: (1.5 + Math.random() * 2.5) * k,
-        rot: Math.random() * 6, vr: (Math.random() - 0.5) * 8, alt: Math.random() < 0.5
+        rot: Math.random() * 6, vr: (Math.random() - 0.5) * 8, alt: Math.random() < 0.5, v: tv.v
       };
       switch (id) {
         case 'fire': p.life = p.max = 0.4 + Math.random() * 0.15; p.r = (3 + Math.random() * 4) * k; break;
@@ -2244,6 +2545,8 @@
   }
 
   function trailUpdate(tr, id, dt, k, drift, ax, ay, active) {
+    const trailId = id;
+    id = resolveTrail(id).kind;
     if (id === 'rainbow' && active) tr.ribbon.unshift({ x: ax, y: ay });
     else if (tr.ribbon.length) tr.ribbon.pop();
     for (const pt of tr.ribbon) pt.x -= drift * dt;
@@ -2252,7 +2555,7 @@
     if (active && id !== 'rainbow') {
       const rate = id === 'footprints' ? 0.11 : 0.05;
       tr.acc += dt;
-      while (tr.acc > rate) { tr.acc -= rate; trailEmit(tr, id, ax, ay, k, false, drift); }
+      while (tr.acc > rate) { tr.acc -= rate; trailEmit(tr, trailId, ax, ay, k, false, drift); }
     }
     for (const p of tr.parts) {
       p.vy += (GRAV[p.kind] || 0) * k * dt;
@@ -2266,85 +2569,86 @@
   }
 
   function drawTrailPart(c, p, k) {
+    const col = x => (p.v ? shade(x, p.v) : x);
     const a = Math.max(0, p.life / p.max);
     c.globalAlpha = Math.min(1, a * 1.4);
     const ink = () => { c.lineWidth = 1; c.strokeStyle = INK; c.stroke(); };
     switch (p.kind) {
       case 'fizz':
         c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        c.strokeStyle = '#5aa7d6'; c.lineWidth = 1.5; c.stroke();
+        c.strokeStyle = col('#5aa7d6'); c.lineWidth = 1.5; c.stroke();
         break;
       case 'fire':
         c.beginPath(); c.arc(p.x, p.y, p.r * (0.4 + a * 0.6), 0, Math.PI * 2);
-        c.fillStyle = a > 0.65 ? '#fff3a0' : a > 0.35 ? '#ff9a1f' : '#d8463b';
+        c.fillStyle = a > 0.65 ? col('#fff3a0') : a > 0.35 ? col('#ff9a1f') : col('#d8463b');
         c.fill();
         break;
       case 'sparkle':
         star4(c, p.x, p.y, p.r * (0.6 + a * 0.4));
-        c.fillStyle = p.alt ? '#ffffff' : '#ff9bd3'; c.fill(); ink();
+        c.fillStyle = p.alt ? col('#ffffff') : col('#ff9bd3'); c.fill(); ink();
         break;
       case 'cash':
         c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
         c.beginPath(); c.rect(-p.r * 1.2, -p.r * 0.6, p.r * 2.4, p.r * 1.2);
-        c.fillStyle = '#86d17a'; c.fill(); ink();
-        c.beginPath(); c.arc(0, 0, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = '#3f8f3a'; c.fill();
+        c.fillStyle = col('#86d17a'); c.fill(); ink();
+        c.beginPath(); c.arc(0, 0, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = col('#3f8f3a'); c.fill();
         c.restore();
         break;
       case 'hearts':
         heart(c, p.x, p.y, p.r);
-        c.fillStyle = p.alt ? '#ff5c8a' : '#ff9bd3'; c.fill(); ink();
+        c.fillStyle = p.alt ? col('#ff5c8a') : col('#ff9bd3'); c.fill(); ink();
         break;
       case 'pixels':
-        c.fillStyle = p.col;
+        c.fillStyle = col(p.col);
         c.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
         c.lineWidth = 1; c.strokeStyle = INK; c.strokeRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
         break;
       case 'protein':
         c.beginPath(); c.arc(p.x, p.y, p.r * (1 + (1 - a) * 0.9), 0, Math.PI * 2);
-        c.fillStyle = p.alt ? '#f5ead6' : '#e7d3b0'; c.fill();
+        c.fillStyle = p.alt ? col('#f5ead6') : col('#e7d3b0'); c.fill();
         c.globalAlpha *= 0.5; ink();
         break;
       case 'plates':
-        c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fillStyle = '#2a2a2a'; c.fill(); ink();
-        c.beginPath(); c.arc(p.x, p.y, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = '#9a9a9a'; c.fill();
+        c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fillStyle = col('#2a2a2a'); c.fill(); ink();
+        c.beginPath(); c.arc(p.x, p.y, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = col('#9a9a9a'); c.fill();
         break;
       case 'likes':
         rr(c, p.x - p.r * 1.1, p.y - p.r * 0.9, p.r * 2.2, p.r * 1.8, p.r * 0.5);
-        c.fillStyle = '#ff5c8a'; c.fill(); ink();
-        heart(c, p.x, p.y + p.r * 0.05, p.r * 0.5); c.fillStyle = '#ffffff'; c.fill();
+        c.fillStyle = col('#ff5c8a'); c.fill(); ink();
+        heart(c, p.x, p.y + p.r * 0.05, p.r * 0.5); c.fillStyle = col('#ffffff'); c.fill();
         break;
       case 'flash':
-        star4(c, p.x, p.y, p.r * (0.5 + a * 0.7)); c.fillStyle = '#ffffff'; c.fill();
-        star4(c, p.x, p.y, p.r * 0.45); c.fillStyle = '#ffe066'; c.fill();
+        star4(c, p.x, p.y, p.r * (0.5 + a * 0.7)); c.fillStyle = col('#ffffff'); c.fill();
+        star4(c, p.x, p.y, p.r * 0.45); c.fillStyle = col('#ffe066'); c.fill();
         break;
       case 'stonks':
-        arrowUp(c, p.x, p.y, p.r); c.fillStyle = '#3fae5a'; c.fill(); ink();
+        arrowUp(c, p.x, p.y, p.r); c.fillStyle = col('#3fae5a'); c.fill(); ink();
         break;
       case 'goldbar':
         c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
         c.beginPath();
         c.moveTo(-p.r * 1.1, p.r * 0.5); c.lineTo(-p.r * 0.7, -p.r * 0.5); c.lineTo(p.r * 0.7, -p.r * 0.5); c.lineTo(p.r * 1.1, p.r * 0.5); c.closePath();
-        c.fillStyle = '#f7c531'; c.fill(); ink();
+        c.fillStyle = col('#f7c531'); c.fill(); ink();
         c.restore();
         break;
       case 'xp':
         c.beginPath(); c.arc(p.x, p.y, p.r * 1.6, 0, Math.PI * 2); c.fillStyle = 'rgba(59,227,122,0.35)'; c.fill();
-        c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fillStyle = '#3be37a'; c.fill();
-        c.beginPath(); c.arc(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = '#ffffff'; c.fill();
+        c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fillStyle = col('#3be37a'); c.fill();
+        c.beginPath(); c.arc(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = col('#ffffff'); c.fill();
         break;
       case 'glitch':
-        c.fillStyle = '#00e5ff'; c.fillRect(p.x - p.r - 1.5 * k, p.y - p.r * 0.4, p.r * 2, p.r * 0.8);
-        c.fillStyle = '#ff2bd6'; c.fillRect(p.x - p.r + 1.5 * k, p.y - p.r * 0.4 + 1.5 * k, p.r * 2, p.r * 0.8);
+        c.fillStyle = col('#00e5ff'); c.fillRect(p.x - p.r - 1.5 * k, p.y - p.r * 0.4, p.r * 2, p.r * 0.8);
+        c.fillStyle = col('#ff2bd6'); c.fillRect(p.x - p.r + 1.5 * k, p.y - p.r * 0.4 + 1.5 * k, p.r * 2, p.r * 0.8);
         break;
       case 'beans':
         c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
-        c.beginPath(); c.ellipse(0, 0, p.r * 1.2, p.r * 0.85, 0, 0, Math.PI * 2); c.fillStyle = '#5a3620'; c.fill(); ink();
-        c.beginPath(); c.moveTo(-p.r * 0.8, 0); c.quadraticCurveTo(0, p.r * 0.4, p.r * 0.8, 0); c.lineWidth = 1; c.strokeStyle = '#2a160a'; c.stroke();
+        c.beginPath(); c.ellipse(0, 0, p.r * 1.2, p.r * 0.85, 0, 0, Math.PI * 2); c.fillStyle = col('#5a3620'); c.fill(); ink();
+        c.beginPath(); c.moveTo(-p.r * 0.8, 0); c.quadraticCurveTo(0, p.r * 0.4, p.r * 0.8, 0); c.lineWidth = 1; c.strokeStyle = col('#2a160a'); c.stroke();
         c.restore();
         break;
       case 'vinyl':
-        c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fillStyle = '#151515'; c.fill(); ink();
-        c.beginPath(); c.arc(p.x, p.y, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = p.alt ? '#d8463b' : '#f7c531'; c.fill();
+        c.beginPath(); c.arc(p.x, p.y, p.r, 0, Math.PI * 2); c.fillStyle = col('#151515'); c.fill(); ink();
+        c.beginPath(); c.arc(p.x, p.y, p.r * 0.35, 0, Math.PI * 2); c.fillStyle = p.alt ? col('#d8463b') : col('#f7c531'); c.fill();
         break;
       case 'footprints':
         c.fillStyle = 'rgba(34,34,34,0.55)';
@@ -2353,23 +2657,23 @@
         break;
       case 'confetti':
         c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
-        c.fillStyle = p.col; c.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r);
+        c.fillStyle = col(p.col); c.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r);
         c.restore();
         break;
       case 'snowstorm':
         c.save(); c.translate(p.x, p.y); c.rotate(p.rot);
-        for (const [col, w] of [[INK, 2.6], ['#ffffff', 1.3]]) {
+        for (const [lineCol, w] of [[INK, 2.6], [col('#dff1ff'), 1.3]]) {
           for (let j = 0; j < 3; j++) {
             const ang = j * Math.PI / 3;
-            line(c, Math.cos(ang) * p.r, Math.sin(ang) * p.r, -Math.cos(ang) * p.r, -Math.sin(ang) * p.r, w, col);
+            line(c, Math.cos(ang) * p.r, Math.sin(ang) * p.r, -Math.cos(ang) * p.r, -Math.sin(ang) * p.r, w, lineCol);
           }
         }
         c.restore();
         break;
       case 'comet':
         c.beginPath(); c.arc(p.x, p.y, p.r * 1.8 * a, 0, Math.PI * 2); c.fillStyle = 'rgba(120,200,255,0.35)'; c.fill();
-        c.beginPath(); c.arc(p.x, p.y, p.r * a, 0, Math.PI * 2); c.fillStyle = '#5aa7d6'; c.fill();
-        c.beginPath(); c.arc(p.x, p.y, p.r * 0.5 * a, 0, Math.PI * 2); c.fillStyle = '#ffffff'; c.fill();
+        c.beginPath(); c.arc(p.x, p.y, p.r * a, 0, Math.PI * 2); c.fillStyle = col('#5aa7d6'); c.fill();
+        c.beginPath(); c.arc(p.x, p.y, p.r * 0.5 * a, 0, Math.PI * 2); c.fillStyle = col('#ffffff'); c.fill();
         break;
       case 'lightning':
         c.beginPath();
@@ -2377,7 +2681,7 @@
         c.lineTo(p.x - p.r * 0.1, p.y); c.lineTo(p.x + p.r * 0.3, p.y + p.r);
         c.lineJoin = 'miter';
         c.lineWidth = 3.4; c.strokeStyle = INK; c.stroke();
-        c.lineWidth = 1.8; c.strokeStyle = '#ffe066'; c.stroke();
+        c.lineWidth = 1.8; c.strokeStyle = col('#ffe066'); c.stroke();
         c.lineJoin = 'round';
         break;
     }
@@ -2413,6 +2717,8 @@
   }
 
   function trailSample(c, id, w, h) {
+    const tv = resolveTrail(id);
+    id = tv.kind;
     c.clearRect(0, 0, w, h);
     if (id === 'rainbow') {
       const pts = [];
@@ -2426,7 +2732,7 @@
     for (let i = 0; i < 4; i++) {
       drawTrailPart(c, {
         kind: id, x: 6 + i * ((w - 12) / 3), y: h / 2 + (i % 2 ? -2.5 : 2.5), r: sizes[id] * (1 - i * 0.1),
-        life: 1 - i * 0.2, max: 1, rot: i * 0.7, alt: i % 2 === 0,
+        life: 1 - i * 0.2, max: 1, rot: i * 0.7, alt: i % 2 === 0, v: tv.v,
         col: (id === 'confetti' ? RAINBOW : PIXELS)[i % 4]
       }, 1);
     }
@@ -2596,9 +2902,9 @@
       kids.push(group('Everyone', TRAILS.map(mk)));
     } else if (currentTab === 'coins') {
       const mk = co => chip(`coin-${hero.id}-${co.id}`, co, co.id === st.c, () => setLook({ c: co.id }),
-        miniCanvas(18, 18, cx => { cx.translate(9, 9); drawCoinStyle(cx, co.id, co.id === 'medalcoin' ? 5.5 : 7.5); }, 'coin'));
+        miniCanvas(18, 18, cx => { cx.translate(9, 9); drawCoinItem(cx, co.id, resolveCoin(co.id).base === 'medalcoin' ? 5.5 : 7.5); }, 'coin'));
       kids.push(group('Coin style', COINS.map(mk)));
-      kids.push(group(`${hero.name} only`, [mk(Object.assign({ sig: true }, hero.coin))]));
+      kids.push(group(`${hero.name} only`, [hero.coin, ...hero.coins].map(x => mk(Object.assign({ sig: true }, x)))));
       if (st.c === 'flag') {
         const row = document.createElement('div');
         row.className = 'flagrow';
@@ -2628,6 +2934,7 @@
       const grp = (label, list) => group(label, list.map(placeCard), 'chcol');
       scrollBox.append(
         grp('Free and earned', THEMES.filter(x => x.kind === 'free' || x.kind === 'coins')),
+        grp('Challenge rewards', THEMES.filter(x => x.kind === 'challenge')),
         grp('Character worlds', THEMES.filter(x => x.kind === 'bundle').sort((a, b) => (b.hero === hero.id) - (a.hero === hero.id))),
         grp('Limited time', THEMES.filter(x => x.kind === 'season').sort((a, b) => inSeason(b) - inSeason(a)))
       );
@@ -2635,14 +2942,39 @@
     } else if (currentTab === 'challenges') {
       const scrollBox = document.createElement('div');
       scrollBox.className = 'chscroll';
+      // Open challenges first, finished ones after; the count shows progress.
+      const list = who => {
+        const all = CHALLENGES.filter(ch => ch.who === who);
+        const open = all.filter(ch => !doneCh.has(ch.id));
+        return { all, sorted: [...open, ...all.filter(ch => doneCh.has(ch.id))], done: all.length - open.length };
+      };
+      const mine = list(hero.id), everyone = list('all');
+      const hint = document.createElement('p');
+      hint.className = 'chhint';
+      hint.textContent = 'Pick a pattern challenge to track and it shows on screen during your next run.';
       scrollBox.append(
-        group(`${hero.name} only`, CHALLENGES.filter(ch => ch.who === hero.id).map(chCard), 'chcol'),
-        group('Everyone', CHALLENGES.filter(ch => ch.who === 'all').map(chCard), 'chcol')
+        hint,
+        group(`${hero.name} only: ${mine.done} of ${mine.all.length} done`, mine.sorted.map(chCard), 'chcol'),
+        group(`Everyone: ${everyone.done} of ${everyone.all.length} done`, everyone.sorted.map(chCard), 'chcol')
       );
       kids.push(scrollBox);
     }
     panel.replaceChildren(...kids);
     renderBank();
+    renderTrackingLine();
+  }
+
+  // Start screen line showing which pattern challenge the next run will track.
+  function renderTrackingLine() {
+    const el = $('trackingLine');
+    const ch = trackerChallenge();
+    if (!ch) { el.hidden = true; return; }
+    const seq = document.createElement('span');
+    seq.className = 'seq';
+    seq.setAttribute('aria-hidden', 'true');
+    seq.append(...seqDots(ch.pattern));
+    el.replaceChildren(document.createTextNode(`${trackedId === ch.id ? 'Tracking' : 'Next up'}: ${ch.name}`), seq);
+    el.hidden = false;
   }
 
   function seqDots(pat, hit = 0, label = true) {
@@ -2692,6 +3024,7 @@
       : open ? (T.kind === 'season' && !collected.has(T.id) ? 'Limited time' : 'Unlocked')
       : T.kind === 'bundle' ? (purchasesAvailable() ? BUNDLE_PRICE : `${T.coinPrice} coins`)
       : T.kind === 'coins' ? `${T.unlock} coins`
+      : T.kind === 'challenge' ? 'Challenge'
       : `Back in ${MONTHS[T.months[0] - 1]}`;
     head.append(name, st);
     const p = document.createElement('p');
@@ -2699,6 +3032,10 @@
     if (T.kind === 'bundle' && purchasesAvailable()) note += ` ${owner.name}’s world pack: this place plus all of ${owner.name}’s coin unlocks.`;
     if (T.kind === 'bundle' && !purchasesAvailable() && !open) note += ` ${owner.name}’s world. Collect ${T.coinPrice} coins in total. You have ${bank}.`;
     if (T.kind === 'coins' && !open) note += ` Collect ${T.unlock} coins in total. You have ${bank}.`;
+    if (T.kind === 'challenge' && !open) {
+      const ch = CHALLENGES.find(x => x.id === T.challenge);
+      if (ch) note += ` Complete the ${ch.name} challenge: ${ch.desc}`;
+    }
     if (T.kind === 'season') {
       note += collected.has(T.id) ? ' Yours to keep.'
         : open ? ` Score 20 here before ${endMonth} ends to keep it forever.`
@@ -2798,7 +3135,7 @@
   }
 
   async function continueRun() {
-    if (continued || state !== 'over') return;
+    if (continued || state !== 'over' || !adsAvailable()) return;
     const ok = await watchAd('continue', 'Back in the air in');
     if (!ok || state !== 'over') return;
     continued = true;
@@ -2817,7 +3154,7 @@
   }
 
   async function doubleCoins() {
-    if (coinsDoubled || runCoins <= 0 || state !== 'over') return;
+    if (coinsDoubled || runCoins <= 0 || state !== 'over' || !adsAvailable()) return;
     const ok = await watchAd('double_coins', 'Doubling your coins in');
     if (!ok) return;
     coinsDoubled = true;
@@ -2888,6 +3225,24 @@
     const rw = document.createElement('small');
     rw.textContent = `Unlocks ${rewardFor(ch)}`;
     d.append(rw);
+    // Pattern challenges can be picked to show on the run tracker.
+    if (trackable(ch)) {
+      const on = trackerChallenge() === ch && trackedId === ch.id;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'trackbtn' + (on ? ' on' : '');
+      b.id = `track-${ch.id}`;
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = on ? 'Tracking on your next run' : 'Track this on my next run';
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        trackedId = on ? null : ch.id;
+        try { trackedId ? localStorage.setItem('jetpackersTracked', trackedId) : localStorage.removeItem('jetpackersTracked'); } catch (err) {}
+        track('challenge_track', { id: trackedId });
+        renderCustom();
+      });
+      d.append(b);
+    }
     return d;
   }
 
@@ -3011,7 +3366,7 @@
     c.save();
     c.translate(PW * 0.88, PH * 0.38 + Math.sin(t * 3) * 5);
     c.scale(Math.max(0.15, spin), 1);
-    drawCoinStyle(c, heroLook.coinStyle, 12);
+    drawCoinItem(c, heroLook.coinStyle, 12);
     c.restore();
     drawBubble(c, px, py - 30, 1, PW);
   }
@@ -3063,7 +3418,7 @@
     gameTrail.parts = []; gameTrail.ribbon = [];
     score = 0; scroll = 0; runCoins = 0;
     hist = []; curRow = 0; doubled = false; runTime = 0; runDone = []; lastMilestone = 0; spawned = 0;
-    continued = false; coinsDoubled = false; banked = 0;
+    continued = false; coinsDoubled = false; banked = 0; runCounted = false;
     shieldReady = !!hero.shield;
     setStreak(0);
     scoreEl.textContent = '0';
@@ -3126,6 +3481,9 @@
         case 'speed': ok = score >= ch.value && runTime <= ch.limit; break;
         case 'noDouble': ok = !doubled && score >= ch.value; break;
         case 'tour': ok = tour.size >= CREW.length; break;
+        case 'tourScore': ok = CREW.every(c => Math.max(runStats.best[c.id] || 0, c.id === hero.id ? score : 0) >= ch.value); break;
+        case 'runs': ok = runStats.total >= ch.value; break;
+        case 'heroRuns': ok = (runStats.by[hero.id] || 0) >= ch.value; break;
       }
       if (ok) completeChallenge(ch);
     }
@@ -3145,7 +3503,14 @@
     say('win');
   }
 
+  // The pattern challenge shown during a run: the one the player picked to track, if it applies to
+  // the current character and isn't done yet; otherwise the first open one.
+  function trackable(ch) {
+    return !!ch && ch.type === 'pattern' && !doneCh.has(ch.id) && (ch.who === 'all' || ch.who === hero.id);
+  }
   function trackerChallenge() {
+    const picked = CHALLENGES.find(ch => ch.id === trackedId);
+    if (trackable(picked)) return picked;
     return CHALLENGES.find(ch => ch.type === 'pattern' && ch.who === hero.id && !doneCh.has(ch.id)) ||
       CHALLENGES.find(ch => ch.type === 'pattern' && ch.who === 'all' && !doneCh.has(ch.id));
   }
@@ -3236,6 +3601,16 @@
       try { localStorage.setItem('jetpackersBest', String(best)); } catch (e) {}
     }
     // After a "keep going" revive, only the coins collected since the last crash are new.
+    // Count the run once (a "keep going" revive continues the same run) and record bests,
+    // then check the challenges that depend on them.
+    if (!runCounted) {
+      runCounted = true;
+      runStats.total++;
+      runStats.by[hero.id] = (runStats.by[hero.id] || 0) + 1;
+    }
+    runStats.best[hero.id] = Math.max(runStats.best[hero.id] || 0, score);
+    try { localStorage.setItem('jetpackersRunStats', JSON.stringify(runStats)); } catch (e) {}
+    checkChallenges();
     const fresh = addCoins(runCoins - banked);
     banked = runCoins;
     track('run_end', { hero: hero.id, theme: activeTheme().id, trial: !!trialTheme, continued, score, coins: runCoins, seconds: Math.round(runTime), cause: reason, challenges: runDone.length });
@@ -3760,7 +4135,7 @@
     ctx.save();
     ctx.translate(fx, fy);
     ctx.scale(Math.max(0.15, spin), 1);
-    drawCoinStyle(ctx, heroLook.coinStyle, 11 * u);
+    drawCoinItem(ctx, heroLook.coinStyle, 11 * u);
     ctx.restore();
   }
 
