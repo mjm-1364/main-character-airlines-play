@@ -328,6 +328,14 @@
   .chip canvas { width: 40px; height: 16px; flex: none; }
   .chip canvas.coin { width: 18px; height: 18px; }
   .chip.locked canvas { opacity: 0.45; }
+  .chip.trying, .ch.trying { outline: 3px solid #ffd23f; outline-offset: 1px; }
+  .fold { border: 2px solid var(--ink); border-radius: 8px; background: #fffaf0; }
+  .fold > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 7px 10px; font-weight: 900; font-size: 0.8rem; }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary::before { content: '▸'; display: inline-block; transition: transform 0.15s; }
+  .fold[open] > summary::before { transform: rotate(90deg); }
+  .fold > summary .foldhint { font-weight: 700; font-size: 0.7rem; color: var(--muted); }
+  .fold > .chips, .fold > .chcol { padding: 0 10px 10px; }
   .dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); flex: none; }
   .sig { font-size: 0.62rem; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: var(--red); }
   .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -1280,7 +1288,7 @@
   if (!purchasesAvailable()) THEMES.filter(x => x.kind === 'bundle').forEach(x => UNLOCKABLES.push({ unlock: x.coinPrice, label: `${x.name} place` }));
 
   const trailOptions = p => [...p.sigTrails.map(x => Object.assign({ sig: true }, x)), ...TRAILS];
-  const coinOptions = p => [...COINS, ...[p.coin, ...p.coins].map(x => Object.assign({ sig: true }, x))];
+  const coinOptions = p => [...[p.coin, ...p.coins].map(x => Object.assign({ sig: true }, x)), ...COINS];
 
   function lookState(p) {
     const st = looks[p.id] || {};
@@ -1294,8 +1302,9 @@
     const c = co && isOpen(co) ? co.id : 'gold';
     return { o, s, a, tr, c };
   }
-  function lookOf(p) {
-    const st = lookState(p);
+  // change: optional overrides for trying on an item without equipping it (it can be locked).
+  function lookOf(p, change) {
+    const st = Object.assign(lookState(p), change || {});
     const L = Object.assign({}, p, p.outfits[st.o].o);
     L.skin = SKINS[st.s] || p.skin;
     // Recoloured extras draw as their base extra with a colour style.
@@ -2764,6 +2773,7 @@
       e.stopPropagation();
       hero = p;
       heroLook = lookOf(hero);
+      clearTryOn();
       preloadHero(hero);
       try { localStorage.setItem('jetpackersHero', p.id); } catch (err) {}
       resetPreviewTrail();
@@ -2789,6 +2799,7 @@
       currentTab = tb.dataset.tab;
       document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === tb)));
       $('lockMsg').textContent = '';
+      clearTryOn();
       renderCustom();
     });
   });
@@ -2805,20 +2816,79 @@
   }
 
   function lockedNote(item) {
+    let how;
     if (item.challenge) {
       const ch = CHALLENGES.find(x => x.id === item.challenge);
-      $('lockMsg').textContent = `Complete the ${ch.name} challenge to unlock ${item.name}. ${ch.desc}`;
+      how = `Complete the ${ch.name} challenge to unlock it. ${ch.desc}`;
     } else if (item.owner) {
       const who = CREW.find(c => c.id === item.owner).name;
-      $('lockMsg').textContent = `Collect ${item.unlock} coins while playing as ${who} to unlock ${item.name}. ${who} has ${heroCoins(item.owner)}.`;
+      how = `Collect ${item.unlock} coins while playing as ${who} to unlock it. ${who} has ${heroCoins(item.owner)}.`;
     } else {
-      $('lockMsg').textContent = `Collect ${item.unlock} coins in total, with any character, to unlock ${item.name}. You have ${bank}.`;
+      how = `Collect ${item.unlock} coins in total, with any character, to unlock it. You have ${bank}.`;
     }
+    $('lockMsg').textContent = `Previewing ${item.name}. ${how}`;
     tone(200, 0.08, 'square', 0.03);
   }
 
+  // ---------- Try-on ----------
+  // Tapping a locked item shows it on the preview without equipping it.
+  let tryOn = null; // { change: lookOf overrides } or { theme: place id }
+  function clearTryOn() {
+    if (!tryOn) return;
+    tryOn = null;
+    resetPreviewTrail();
+    document.querySelectorAll('#panel .trying').forEach(x => x.classList.remove('trying'));
+  }
+  function setTryOn(next, el) {
+    tryOn = next;
+    if (next.change) next.look = lookOf(hero, next.change);
+    resetPreviewTrail();
+    document.querySelectorAll('#panel .trying').forEach(x => x.classList.remove('trying'));
+    if (el) el.classList.add('trying');
+  }
+
+  // ---------- Locker sections ----------
+  // Folded sections remember whether they were open while the Locker is in use.
+  const openFolds = new Set();
+  function fold(key, label, hint, children, cls = 'chips') {
+    const d = document.createElement('details');
+    d.className = 'fold';
+    d.open = openFolds.has(key);
+    d.addEventListener('toggle', () => { if (d.open) openFolds.add(key); else openFolds.delete(key); });
+    const s = document.createElement('summary');
+    const t = document.createElement('span');
+    t.textContent = label;
+    s.append(t);
+    if (hint) {
+      const h = document.createElement('span');
+      h.className = 'foldhint';
+      h.textContent = hint;
+      s.append(h);
+    }
+    const box = document.createElement('div');
+    box.className = cls;
+    box.append(...children);
+    d.append(s, box);
+    return d;
+  }
+  // Splits a tab's items into: yours, earn with coins (cheapest first), win in challenges.
+  function sections(key, items, makeChip) {
+    const yours = [], coins = [], wins = [];
+    items.forEach(it => (isOpen(it) ? yours : it.challenge ? wins : coins).push(it));
+    coins.sort((a, b) => (a.unlock || 0) - (b.unlock || 0));
+    const out = [group(`Yours (${yours.length})`, yours.map(makeChip))];
+    if (coins.length) {
+      const next = coins[0];
+      const have = next.owner ? heroCoins(next.owner) : bank;
+      out.push(fold(`${key}-coins`, `Earn with coins (${coins.length})`, `Next: ${next.name}, ${have}/${next.unlock}`, coins.map(makeChip)));
+    }
+    if (wins.length) out.push(fold(`${key}-wins`, `Win in challenges (${wins.length})`, 'Tap one to preview it', wins.map(makeChip)));
+    return out;
+  }
+
   // Builds one option chip. "art" is an optional element shown before the label.
-  function chip(idStr, item, selected, onPick, art) {
+  // tryChange: what to show on the preview when the item is locked.
+  function chip(idStr, item, selected, onPick, art, tryChange) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'chip';
@@ -2843,7 +2913,12 @@
     } else {
       b.setAttribute('aria-pressed', String(selected));
     }
-    b.addEventListener('click', e => { e.stopPropagation(); open ? onPick() : lockedNote(item); });
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      if (open) { clearTryOn(); $('lockMsg').textContent = ''; onPick(); return; }
+      if (tryChange) setTryOn({ change: tryChange }, b);
+      lockedNote(item);
+    });
     return b;
   }
 
@@ -2875,12 +2950,15 @@
     const panel = $('panel');
     const kids = [];
     if (currentTab === 'outfit') {
-      kids.push(group('Outfit', hero.outfits.map((of, i) => {
+      const idx = new Map(hero.outfits.map((of, i) => [of, i]));
+      const parts = sections('outfit', hero.outfits, of => {
+        const i = idx.get(of);
         const dot = document.createElement('span');
         dot.className = 'dot';
         dot.style.background = of.o.top || hero.top;
-        return chip(`outfit-${hero.id}-${i}`, of, i === st.o, () => setLook({ o: i }), dot);
-      })));
+        return chip(`outfit-${hero.id}-${i}`, of, i === st.o, () => setLook({ o: i }), dot, { o: i });
+      });
+      kids.push(parts.shift());
       kids.push(group('Skin tone', SKINS.map((col, i) => {
         const b = document.createElement('button');
         b.type = 'button';
@@ -2892,19 +2970,18 @@
         b.addEventListener('click', e => { e.stopPropagation(); setLook({ s: i }); });
         return b;
       }), 'swatches'));
+      kids.push(...parts);
     } else if (currentTab === 'extras') {
       const opts = [{ id: 'none', name: 'None' }, ...hero.accs];
-      kids.push(group(`${hero.name}'s extras`, opts.map(a => chip(`acc-${hero.id}-${a.id}`, a, a.id === st.a, () => setLook({ a: a.id })))));
+      kids.push(...sections('extras', opts, a => chip(`acc-${hero.id}-${a.id}`, a, a.id === st.a, () => setLook({ a: a.id }), null, { a: a.id })));
     } else if (currentTab === 'trail') {
       const mk = tr => chip(`trail-${hero.id}-${tr.id}`, tr, tr.id === st.tr, () => { setLook({ tr: tr.id }); resetPreviewTrail(); },
-        miniCanvas(40, 16, cx => trailSample(cx, tr.id, 40, 16)));
-      kids.push(group(`${hero.name} only`, hero.sigTrails.map(x => mk(Object.assign({ sig: true }, x)))));
-      kids.push(group('Everyone', TRAILS.map(mk)));
+        miniCanvas(40, 16, cx => trailSample(cx, tr.id, 40, 16)), { tr: tr.id });
+      kids.push(...sections('trail', [...hero.sigTrails.map(x => Object.assign({ sig: true }, x)), ...TRAILS], mk));
     } else if (currentTab === 'coins') {
       const mk = co => chip(`coin-${hero.id}-${co.id}`, co, co.id === st.c, () => setLook({ c: co.id }),
-        miniCanvas(18, 18, cx => { cx.translate(9, 9); drawCoinItem(cx, co.id, resolveCoin(co.id).base === 'medalcoin' ? 5.5 : 7.5); }, 'coin'));
-      kids.push(group('Coin style', COINS.map(mk)));
-      kids.push(group(`${hero.name} only`, [hero.coin, ...hero.coins].map(x => mk(Object.assign({ sig: true }, x)))));
+        miniCanvas(18, 18, cx => { cx.translate(9, 9); drawCoinItem(cx, co.id, resolveCoin(co.id).base === 'medalcoin' ? 5.5 : 7.5); }, 'coin'), { c: co.id });
+      kids.push(...sections('coins', [...[hero.coin, ...hero.coins].map(x => Object.assign({ sig: true }, x)), ...COINS], mk));
       if (st.c === 'flag') {
         const row = document.createElement('div');
         row.className = 'flagrow';
@@ -2931,13 +3008,18 @@
     } else if (currentTab === 'places') {
       const scrollBox = document.createElement('div');
       scrollBox.className = 'chscroll';
-      const grp = (label, list) => group(label, list.map(placeCard), 'chcol');
-      scrollBox.append(
-        grp('Free and earned', THEMES.filter(x => x.kind === 'free' || x.kind === 'coins')),
-        grp('Challenge rewards', THEMES.filter(x => x.kind === 'challenge')),
-        grp('Character worlds', THEMES.filter(x => x.kind === 'bundle').sort((a, b) => (b.hero === hero.id) - (a.hero === hero.id))),
-        grp('Limited time', THEMES.filter(x => x.kind === 'season').sort((a, b) => inSeason(b) - inSeason(a)))
-      );
+      // Same split as the other tabs: yours first, then folded sections by how you get them.
+      const locked = THEMES.filter(x => !themeOpen(x));
+      const price = x => x.kind === 'bundle' ? x.coinPrice : x.unlock;
+      const coinBuy = locked.filter(x => x.kind === 'coins' || (x.kind === 'bundle' && !purchasesAvailable())).sort((a, b) => price(a) - price(b));
+      const wins = locked.filter(x => x.kind === 'challenge');
+      const worlds = purchasesAvailable() ? locked.filter(x => x.kind === 'bundle').sort((a, b) => (b.hero === hero.id) - (a.hero === hero.id)) : [];
+      const later = locked.filter(x => x.kind === 'season');
+      scrollBox.append(group(`Yours (${THEMES.length - locked.length})`, THEMES.filter(themeOpen).map(placeCard), 'chcol'));
+      if (coinBuy.length) scrollBox.append(fold('places-coins', `Earn with coins (${coinBuy.length})`, `Next: ${coinBuy[0].name}, ${bank}/${price(coinBuy[0])}`, coinBuy.map(placeCard), 'chcol'));
+      if (wins.length) scrollBox.append(fold('places-wins', `Win in challenges (${wins.length})`, 'Preview any of them', wins.map(placeCard), 'chcol'));
+      if (worlds.length) scrollBox.append(fold('places-worlds', `Character worlds (${worlds.length})`, `${BUNDLE_PRICE} each`, worlds.map(placeCard), 'chcol'));
+      if (later.length) scrollBox.append(fold('places-later', `Limited time (${later.length})`, 'Come back in season', later.map(placeCard), 'chcol'));
       kids.push(scrollBox);
     } else if (currentTab === 'challenges') {
       const scrollBox = document.createElement('div');
@@ -3053,7 +3135,11 @@
       b.addEventListener('click', e => { e.stopPropagation(); fn(); });
       row.append(b);
     };
-    if (open && !using) btn('Use', 'go', () => setTheme(T.id));
+    if (open && !using) btn('Use', 'go', () => { clearTryOn(); $('lockMsg').textContent = ''; setTheme(T.id); });
+    if (!open) btn('Preview', 'ghost', () => {
+      setTryOn({ theme: T.id }, d);
+      $('lockMsg').textContent = `Previewing ${T.name}. ${st.textContent === 'Challenge' ? 'Win its challenge to unlock it.' : 'Locked: ' + st.textContent + '.'}`;
+    });
     if (T.kind === 'bundle' && !open) {
       if (purchasesAvailable()) btn(`Buy ${BUNDLE_PRICE}`, 'go', () => buyBundle(T.hero));
       if (adsAvailable()) btn('Try 1 run free', 'ghost', () => tryTheme(T.id));
@@ -3332,7 +3418,8 @@
     const c = pctx;
     c.setTransform(PD, 0, 0, PD, 0, 0);
     const drift = 120;
-    const trailId = heroLook.trail;
+    const look = tryOn && tryOn.look ? tryOn.look : heroLook;
+    const trailId = look.trail;
     previewScroll += drift * dt;
     const px = PW * 0.58, py = PH * 0.4 + Math.sin(t * 2.4) * 9;
     const r = 15;
@@ -3344,7 +3431,7 @@
     previewFlame = Math.max(0, previewFlame - dt * 3.5);
     trailUpdate(previewTrail, trailId, dt, 1, drift, px - r * 0.8, py + r * 1.15, true);
 
-    const T = activeTheme();
+    const T = (tryOn && tryOn.theme && THEMES.find(x => x.id === tryOn.theme)) || activeTheme();
     const g = c.createLinearGradient(0, 0, 0, PH);
     g.addColorStop(0, T.sky[0]);
     g.addColorStop(1, T.sky[1]);
@@ -3359,15 +3446,23 @@
     trailDraw(c, previewTrail, 1);
     c.save();
     c.translate(px, py);
-    drawPerson(c, heroLook, r, { time: t, flame: previewFlame });
+    drawPerson(c, look, r, { time: t, flame: previewFlame });
     c.restore();
     // the coin you'll be chasing
     const spin = reduceMotion ? 1 : Math.abs(Math.cos(t * 3));
     c.save();
     c.translate(PW * 0.88, PH * 0.38 + Math.sin(t * 3) * 5);
     c.scale(Math.max(0.15, spin), 1);
-    drawCoinItem(c, heroLook.coinStyle, 12);
+    drawCoinItem(c, look.coinStyle, 12);
     c.restore();
+    if (tryOn) {
+      // A tag so nobody thinks the locked item is already theirs
+      c.font = '900 11px Nunito, sans-serif';
+      const w = c.measureText('PREVIEW').width + 14;
+      c.beginPath(); c.rect(8, 8, w, 20); paint(c, '#ffd23f', 1.5);
+      c.fillStyle = '#1d1a24'; c.textBaseline = 'middle';
+      c.fillText('PREVIEW', 15, 18.5);
+    }
     drawBubble(c, px, py - 30, 1, PW);
   }
 
@@ -4341,7 +4436,7 @@
   }
   $('switchBtn').addEventListener('click', showLocker);
   $('lockerBtn').addEventListener('click', e => { e.stopPropagation(); showLocker(); });
-  $('lockerDone').addEventListener('click', e => { e.stopPropagation(); showHome(); });
+  $('lockerDone').addEventListener('click', e => { e.stopPropagation(); clearTryOn(); $('lockMsg').textContent = ''; showHome(); });
 
   // ---------- Settings, pause, credits and privacy ----------
   // The email address players can write to about privacy.
