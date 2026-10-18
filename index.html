@@ -330,7 +330,52 @@
   .chip.locked canvas { opacity: 0.45; }
   .chip.locked.buyable { background: #fff4cc; border-style: solid; color: var(--ink); }
   .buybtn { margin-left: 6px; padding: 4px 12px; font-size: 0.8rem; }
-  .chip.trying, .ch.trying { outline: 3px solid #ffd23f; outline-offset: 1px; }
+  .chip.trying, .ch.trying, .tile.trying { outline: 3px solid #ffd23f; outline-offset: 1px; }
+  /* Rarity: the border colour says how special a coin item is */
+  .chip.r-rare { border-color: #3c7fd1; }
+  .chip.r-epic { border-color: #8a4fd8; }
+  .chip.r-legendary { border-color: #c99a06; background-image: linear-gradient(110deg, transparent 30%, rgba(255, 215, 64, 0.35) 45%, transparent 60%); background-size: 250% 100%; animation: shimmer 2.4s linear infinite; }
+  .chip.r-rare, .chip.r-epic, .chip.r-legendary { border-width: 2.5px; }
+  @keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  @media (prefers-reduced-motion: reduce) { .chip.r-legendary { animation: none; } }
+  .rarity-key { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 0.68rem; font-weight: 800; color: var(--muted); padding: 0 10px 6px; }
+  .rarity-key b { font-weight: 900; }
+  .rarity-key .rare { color: #3c7fd1; } .rarity-key .epic { color: #8a4fd8; } .rarity-key .legendary { color: #b08300; }
+  /* Colour families: one chip per item, its colours open underneath */
+  .family { display: inline-block; }
+  .family[open] { display: block; width: 100%; background: #f6f1e6; border-radius: 10px; padding-bottom: 6px; }
+  .family > summary { list-style: none; }
+  .family > summary::-webkit-details-marker { display: none; }
+  .family[open] > summary { margin: 4px; }
+  .family > .chips { padding: 2px 8px 0 18px; }
+  .famchip .famn { font-size: 0.66rem; font-weight: 900; color: var(--muted); }
+  .famchip.famsel { background: var(--gold); box-shadow: 2px 2px 0 var(--ink); }
+  .famchip.famsel .famn { color: var(--ink); }
+  .chip .cost s { opacity: 0.6; margin-right: 2px; }
+  .chip.dealchip { border-color: var(--red); border-style: solid; }
+  /* Today's deal, in the Locker */
+  .deal { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; background: #ffe3dc; border: 2px solid var(--ink); border-radius: 8px; padding: 6px 10px; font-weight: 800; font-size: 0.8rem; text-align: center; }
+  .deal strong { font-family: var(--font-display); font-weight: 400; color: var(--red); letter-spacing: 0.03em; }
+  .deal button { padding: 4px 12px; font-size: 0.78rem; }
+  /* Places as a grid of tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+  .tile { display: flex; flex-direction: column; gap: 3px; align-items: stretch; text-align: left; padding: 5px; font: inherit; color: var(--ink);
+    background: #ffffff; border: 2px solid var(--ink); border-radius: 8px; cursor: pointer; min-width: 0; }
+  .tile canvas.thumb { width: 100%; height: auto; aspect-ratio: 96 / 54; border: 1.5px solid var(--ink); border-radius: 5px; }
+  .tile strong { font-family: var(--font-display); font-weight: 400; font-size: 0.82rem; letter-spacing: 0.02em; line-height: 1.1; }
+  .tile .tile-state { font-size: 0.68rem; font-weight: 900; color: var(--muted); }
+  .tile.using { background: var(--gold); box-shadow: 2px 2px 0 var(--ink); }
+  .tile.using .tile-state { color: var(--ink); }
+  .tile.locked { background: #ece7dc; border-style: dashed; }
+  .tile.locked canvas { opacity: 0.7; }
+  .tile.buyable { background: #fff4cc; border-style: solid; }
+  .tile:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  .fold.yours > .tiles { max-height: none; overflow: visible; }
+  .lockmsg .ghost, .lockmsg .go, .lockmsg .adbtn { margin: 4px 0 0 6px; padding: 4px 12px; font-size: 0.8rem; }
+  /* Challenge progress */
+  .ch-who { font-size: 0.64rem; font-weight: 900; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-left: 6px; }
+  .ch-prog { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ch-prog .meter { width: 140px; }
   .fold { border: 2px solid var(--ink); border-radius: 8px; background: #fffaf0; }
   .fold > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 7px 10px; font-weight: 900; font-size: 0.8rem; }
   .fold > summary::-webkit-details-marker { display: none; }
@@ -436,7 +481,7 @@
     .home #preview { width: 230px; }
     #lockerCard #preview { width: 230px; }
     /* The item list shrinks on short phones so the whole Locker fits */
-    .panel .chscroll { max-height: clamp(150px, calc(100dvh - 505px), 280px); }
+    .panel .chscroll { max-height: clamp(150px, calc(100dvh - 640px), 280px); }
   }
   @media (max-height: 700px) {
     .homehint { display: none; }
@@ -548,6 +593,7 @@
         <div class="side">
           <div class="slot" id="lockerSlot"></div>
           <div class="bank bankline"></div>
+          <div class="deal" id="dealBox" hidden></div>
           <div class="lockercrew" id="lockerCrew"></div>
         </div>
         <div class="side custom">
@@ -586,7 +632,7 @@
       <div class="row">
         <button class="go" id="againBtn" type="button">Run it back</button>
         <button class="ghost" id="switchBtn" type="button">Locker</button>
-        <button class="ghost" id="copyBtn" type="button">Copy my score</button>
+        <button class="ghost" id="copyBtn" type="button">Share</button>
       </div>
       <p class="copied" id="copied" aria-live="polite"></p>
     </div>
@@ -1054,7 +1100,7 @@
           const val = b.o[f] || c[f];
           if (val) colours[f] = shade(val, forced(st));
         }
-        outfits.push({ name: `${st.n} ${b.name}`, o: Object.assign({}, b.o, colours) });
+        outfits.push({ name: `${st.n} ${b.name}`, fam: b.name, o: Object.assign({}, b.o, colours) });
       });
     }
     price(outfits, ladder(24, 75, 3000), [7, 15, 23]);
@@ -2923,18 +2969,37 @@
   // onBuy runs after a purchase (usually equips the item).
   const runsAs = id => runStats.by[id] || 0;
   const runsShort = item => (item.owner ? Math.max(0, item.runs - runsAs(item.owner)) : 0);
-  const canBuy = item => !!item.key && !item.challenge && runsShort(item) === 0 && wallet >= item.price;
+  // Today's deal: one everyone-item at half price, the same for everybody on a given day.
+  let dealPool = null;
+  function dealItem() {
+    if (!dealPool) dealPool = UNLOCKABLES.filter(u => !u.owner && !u.item.isPlace && !u.item.challenge && u.item.price >= 40 && u.item.price <= 800).map(u => u.item);
+    if (!dealPool.length) return null;
+    let h = 7;
+    for (const ch of dayKey()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return dealPool[h % dealPool.length];
+  }
+  const isDeal = item => { const d = dealItem(); return !!d && !!item.key && item.key === d.key; };
+  const priceOf = item => (isDeal(item) ? Math.max(5, Math.round(item.price / 10) * 5) : item.price);
+  const rarityOf = item => {
+    if (!item.key || item.challenge) return '';
+    const p = item.price;
+    return p < 100 ? 'common' : p < 400 ? 'rare' : p < 1200 ? 'epic' : 'legendary';
+  };
+  const canBuy = item => !!item.key && !item.challenge && runsShort(item) === 0 && wallet >= priceOf(item);
   function buy(item) {
     if (!canBuy(item)) return false;
-    wallet -= item.price;
+    const price = priceOf(item);
+    wallet -= price;
     bought.add(item.key);
     saveWallet();
-    track('buy', { item: item.key, price: item.price });
+    track('buy', { item: item.key, price, deal: isDeal(item) });
     tone(660, 0.08, 'square', 0.05); tone(990, 0.12, 'square', 0.05, null, 0.08);
     return true;
   }
-  function lockedNote(item, onBuy) {
+  function lockedNote(item, onBuy, tryChange) {
     const msg = $('lockMsg');
+    const price = priceOf(item);
+    const cost = isDeal(item) ? `Today's deal: ${price} coins (usually ${item.price}).` : `Costs ${price} coins.`;
     let how;
     if (item.challenge) {
       const ch = CHALLENGES.find(x => x.id === item.challenge);
@@ -2942,19 +3007,38 @@
     } else if (runsShort(item)) {
       const who = CREW.find(c => c.id === item.owner).name;
       const left = runsShort(item);
-      how = `Costs ${item.price} coins. Fly ${left} more run${left === 1 ? '' : 's'} as ${who} to be able to buy it.`;
-    } else if (wallet < item.price) {
-      how = `Costs ${item.price} coins. You have ${wallet}, ${item.price - wallet} to go.`;
+      how = `${cost} Fly ${left} more run${left === 1 ? '' : 's'} as ${who} to be able to buy it.`;
+    } else if (wallet < price) {
+      how = `${cost} You have ${wallet}, ${price - wallet} to go.`;
     } else {
-      how = `Costs ${item.price} coins. You have ${wallet}.`;
+      how = `${cost} You have ${wallet}.`;
     }
-    msg.textContent = `Previewing ${item.name}. ${how}`;
+    const tier = rarityOf(item);
+    msg.textContent = `Previewing ${item.name}${tier && tier !== 'common' ? ` (${tier})` : ''}. ${how}`;
+    // Wear it for one run after a rewarded ad.
+    if (tryChange && adsAvailable()) {
+      const t = document.createElement('button');
+      t.type = 'button';
+      t.className = 'adbtn';
+      t.id = 'tryRunBtn';
+      t.innerHTML = '<span class="adtag">AD</span> Wear it for 1 run';
+      t.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!(await watchAd('item_trial', 'Your run starts in'))) return;
+        lookTrialPending = { change: tryChange, item };
+        track('item_trial_start', { item: item.key || item.name });
+        clearTryOn();
+        msg.textContent = '';
+        begin();
+      });
+      msg.append(' ', t);
+    }
     if (canBuy(item)) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'go buybtn';
       b.id = 'buyBtn';
-      b.textContent = `Buy for ${item.price}`;
+      b.textContent = `Buy for ${price}`;
       b.addEventListener('click', e => {
         e.stopPropagation();
         if (!buy(item)) return;
@@ -2972,6 +3056,8 @@
   // ---------- Try-on ----------
   // Tapping a locked item shows it on the preview without equipping it.
   let tryOn = null; // { change: lookOf overrides } or { theme: place id }
+  // A one-run try-on after a rewarded ad: { change, item }. It starts with the next run and ends with it.
+  let lookTrialPending = null, lookTrial = null;
   function clearTryOn() {
     if (!tryOn) return;
     tryOn = null;
@@ -2989,7 +3075,7 @@
   // ---------- Locker sections ----------
   // Folded sections remember whether they were open while the Locker is in use.
   // "Yours" starts open in every tab; the rest start folded.
-  const openFolds = new Set(['outfit-yours', 'extras-yours', 'trail-yours', 'coins-yours', 'places-yours']);
+  const openFolds = new Set(['outfit-yours', 'extras-yours', 'trail-yours', 'coins-yours', 'places-yours', 'ch-pattern']);
   function fold(key, label, hint, children, cls = 'chips') {
     const d = document.createElement('details');
     d.className = 'fold' + (key.endsWith('-yours') ? ' yours' : '');
@@ -3011,17 +3097,66 @@
     d.append(s, box);
     return d;
   }
-  // Splits a tab's items into: yours, earn with coins (cheapest first), win in challenges.
+  // Items that are recolours of the same thing share a family; the family shows as one chip.
+  const STYLE_NAMES = STYLES.map(x => x.n).join('|');
+  const STYLE_RE = new RegExp(`^(?:(?:${STYLE_NAMES}) )?(.*?)(?: \\((?:${STYLE_NAMES})\\))?$`);
+  const famKey = it => it.fam || it.base || it.kind || it.id || it.name;
+  const famName = it => it.fam || it.name.replace(STYLE_RE, '$1');
+  function grouped(tabKey, items, makeChip, showPrice) {
+    const fams = new Map();
+    items.forEach(it => { const k = famKey(it); if (!fams.has(k)) fams.set(k, []); fams.get(k).push(it); });
+    const out = [];
+    for (const [k, list] of fams) {
+      const chips = list.map(makeChip);
+      if (list.length < 2) { out.push(chips[0]); continue; }
+      const d = document.createElement('details');
+      d.className = 'family';
+      const fk = `fam-${tabKey}-${k}`;
+      d.open = openFolds.has(fk);
+      d.addEventListener('toggle', () => { if (d.open) openFolds.add(fk); else openFolds.delete(fk); });
+      const sum = document.createElement('summary');
+      sum.className = 'chip famchip' + (chips.some(c => c.getAttribute('aria-pressed') === 'true') ? ' famsel' : '');
+      const art = chips[0].firstChild;
+      if (art && art.tagName === 'CANVAS') {
+        const c2 = document.createElement('canvas');
+        c2.width = art.width; c2.height = art.height; c2.className = art.className;
+        c2.getContext('2d').drawImage(art, 0, 0);
+        sum.append(c2);
+      } else if (art && art.classList && art.classList.contains('dot')) {
+        sum.append(art.cloneNode(true));
+      }
+      sum.append(document.createTextNode(famName(list[0])));
+      const n = document.createElement('span');
+      n.className = 'famn';
+      n.textContent = showPrice ? `${list.length} colors, from ${Math.min(...list.map(priceOf))}` : `${list.length} colors`;
+      sum.append(n);
+      const box = document.createElement('div');
+      box.className = 'chips';
+      box.append(...chips);
+      d.append(sum, box);
+      out.push(d);
+    }
+    return out;
+  }
+  function rarityKey() {
+    const k = document.createElement('div');
+    k.className = 'rarity-key';
+    k.innerHTML = '<span>Border shows rarity:</span><b class="rare">Rare</b><b class="epic">Epic</b><b class="legendary">Legendary</b>';
+    return k;
+  }
+  // Splits a tab's items into: yours, buy with coins (cheapest first), win in challenges.
   function sections(key, items, makeChip) {
     const yours = [], coins = [], wins = [];
     items.forEach(it => (isOpen(it) ? yours : it.challenge ? wins : coins).push(it));
-    coins.sort((a, b) => (a.price || 0) - (b.price || 0));
-    const out = [fold(`${key}-yours`, `Yours (${yours.length})`, 'Tap to wear', yours.map(makeChip))];
+    coins.sort((a, b) => priceOf(a) - priceOf(b));
+    const out = [fold(`${key}-yours`, `Yours (${yours.length})`, 'Tap to wear', grouped(key, yours, makeChip))];
     if (coins.length) {
       const ready = coins.filter(canBuy).length;
-      out.push(fold(`${key}-coins`, `Buy with coins (${coins.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${coins[0].price}`, coins.map(makeChip)));
+      const f = fold(`${key}-coins`, `Buy with coins (${coins.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${priceOf(coins[0])}`, grouped(key, coins, makeChip, true));
+      f.querySelector('summary').after(rarityKey());
+      out.push(f);
     }
-    if (wins.length) out.push(fold(`${key}-wins`, `Win in challenges (${wins.length})`, 'Tap one to preview it', wins.map(makeChip)));
+    if (wins.length) out.push(fold(`${key}-wins`, `Win in challenges (${wins.length})`, 'Tap one to preview it', grouped(key, wins, makeChip)));
     return out;
   }
 
@@ -3041,17 +3176,21 @@
       s.textContent = 'Signature';
       b.append(s);
     }
+    const tier = rarityOf(item);
+    if (tier && tier !== 'common') { b.classList.add('r-' + tier); b.title = tier[0].toUpperCase() + tier.slice(1); }
     if (!open) {
       b.classList.add('locked');
       b.setAttribute('aria-disabled', 'true');
       const cost = document.createElement('span');
       cost.className = 'cost';
-      const short = runsShort(item);
-      cost.innerHTML = (canBuy(item) ? COIN_SVG : LOCK_SVG) + ' ' + (item.challenge ? 'Challenge' : short ? `${short} run${short === 1 ? '' : 's'}` : item.price);
+      const short = runsShort(item), price = priceOf(item), deal = isDeal(item);
+      cost.innerHTML = (canBuy(item) ? COIN_SVG : LOCK_SVG) + ' ' + (item.challenge ? 'Challenge' : short ? `${short} run${short === 1 ? '' : 's'}`
+        : deal ? `<s>${item.price}</s>${price}` : price);
       b.append(cost);
       if (canBuy(item)) b.classList.add('buyable');
+      if (deal) b.classList.add('dealchip');
       b.setAttribute('aria-label', item.challenge ? `${item.name}, locked, needs a challenge`
-        : short ? `${item.name}, locked, needs ${short} more runs then ${item.price} coins` : `${item.name}, costs ${item.price} coins`);
+        : short ? `${item.name}, locked, needs ${short} more runs then ${price} coins` : `${item.name}, costs ${price} coins${deal ? ", today's deal" : ''}`);
     } else {
       b.setAttribute('aria-pressed', String(selected));
     }
@@ -3059,9 +3198,42 @@
       e.stopPropagation();
       if (open) { clearTryOn(); $('lockMsg').textContent = ''; onPick(); return; }
       if (tryChange) setTryOn({ change: tryChange }, b);
-      lockedNote(item, onPick);
+      lockedNote(item, onPick, tryChange);
     });
     return b;
+  }
+
+  // Today's deal box in the Locker. "Show me" opens the right tab with the item previewed.
+  function renderDeal() {
+    const box = $('dealBox');
+    const it = dealItem();
+    if (!it) { box.hidden = true; return; }
+    const tab = TRAILS.includes(it) ? 'trail' : 'coins';
+    const title = document.createElement('strong');
+    title.textContent = "Today's deal";
+    const txt = document.createElement('span');
+    if (isOpen(it)) {
+      txt.textContent = `${it.name} is already yours. A new deal arrives tomorrow.`;
+      box.replaceChildren(title, txt);
+    } else {
+      txt.textContent = `${it.name} ${tab === 'trail' ? 'trail' : 'coin'}: ${priceOf(it)} coins, usually ${it.price}`;
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'ghost'; b.id = 'dealBtn';
+      b.textContent = 'Show me';
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        currentTab = tab;
+        document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
+        openFolds.add(`${tab}-coins`);
+        openFolds.add(`fam-${tab}-${famKey(it)}`);
+        clearTryOn();
+        renderCustom();
+        const c = $(`${tab === 'trail' ? 'trail' : 'coin'}-${hero.id}-${it.id}`);
+        if (c) { c.scrollIntoView({ block: 'nearest' }); c.click(); }
+      });
+      box.replaceChildren(title, txt, b);
+    }
+    box.hidden = false;
   }
 
   function group(labelText, children, cls = 'chips') {
@@ -3170,37 +3342,44 @@
       const wins = locked.filter(x => x.kind === 'challenge');
       const worlds = purchasesAvailable() ? locked.filter(x => x.kind === 'bundle').sort((a, b) => (b.hero === hero.id) - (a.hero === hero.id)) : [];
       const later = locked.filter(x => x.kind === 'season');
-      scrollBox.append(fold('places-yours', `Yours (${THEMES.length - locked.length})`, 'Tap Use to fly there', THEMES.filter(themeOpen).map(placeCard), 'chcol'));
+      scrollBox.append(fold('places-yours', `Yours (${THEMES.length - locked.length})`, 'Tap one to fly there', THEMES.filter(themeOpen).map(placeCard), 'tiles'));
       if (coinBuy.length) {
         const ready = coinBuy.filter(x => wallet >= x.price).length;
-        scrollBox.append(fold('places-coins', `Buy with coins (${coinBuy.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${coinBuy[0].price}`, coinBuy.map(placeCard), 'chcol'));
+        scrollBox.append(fold('places-coins', `Buy with coins (${coinBuy.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${coinBuy[0].price}`, coinBuy.map(placeCard), 'tiles'));
       }
-      if (wins.length) scrollBox.append(fold('places-wins', `Win in challenges (${wins.length})`, 'Preview any of them', wins.map(placeCard), 'chcol'));
-      if (worlds.length) scrollBox.append(fold('places-worlds', `Character worlds (${worlds.length})`, `${BUNDLE_PRICE} each`, worlds.map(placeCard), 'chcol'));
-      if (later.length) scrollBox.append(fold('places-later', `Limited time (${later.length})`, 'Come back in season', later.map(placeCard), 'chcol'));
+      if (wins.length) scrollBox.append(fold('places-wins', `Win in challenges (${wins.length})`, 'Tap one to preview it', wins.map(placeCard), 'tiles'));
+      if (worlds.length) scrollBox.append(fold('places-worlds', `Character worlds (${worlds.length})`, `${BUNDLE_PRICE} each`, worlds.map(placeCard), 'tiles'));
+      if (later.length) scrollBox.append(fold('places-later', `Limited time (${later.length})`, 'Come back in season', later.map(placeCard), 'tiles'));
       kids.push(scrollBox);
     } else if (currentTab === 'challenges') {
       const scrollBox = document.createElement('div');
       scrollBox.className = 'chscroll';
-      // Open challenges first, finished ones after; the count shows progress.
-      const list = who => {
-        const all = CHALLENGES.filter(ch => ch.who === who);
-        const open = all.filter(ch => !doneCh.has(ch.id));
-        return { all, sorted: [...open, ...all.filter(ch => doneCh.has(ch.id))], done: all.length - open.length };
-      };
-      const mine = list(hero.id), everyone = list('all');
+      // This character's and everyone's challenges, folded by kind. Open ones first in each.
       const hint = document.createElement('p');
       hint.className = 'chhint';
       hint.textContent = 'Pick a pattern challenge to track and it shows on screen during your next run.';
-      scrollBox.append(
-        hint,
-        group(`${hero.name} only: ${mine.done} of ${mine.all.length} done`, mine.sorted.map(chCard), 'chcol'),
-        group(`Everyone: ${everyone.done} of ${everyone.all.length} done`, everyone.sorted.map(chCard), 'chcol')
-      );
+      scrollBox.append(hint);
+      const KINDS = [
+        ['pattern', 'Patterns', ['pattern']],
+        ['score', 'Score goals', ['score', 'noCoinScore', 'speed', 'noDouble']],
+        ['coins', 'Coins and combos', ['runCoins', 'row', 'combo']],
+        ['runs', 'Runs and the whole crew', ['runs', 'heroRuns', 'tour', 'tourScore']]
+      ];
+      const mine = CHALLENGES.filter(ch => ch.who === hero.id || ch.who === 'all');
+      const known = KINDS.flatMap(k => k[2]);
+      KINDS.push(['other', 'Other', null]);
+      KINDS.forEach(([k, label, types]) => {
+        const list = mine.filter(ch => (types ? types.includes(ch.type) : !known.includes(ch.type)));
+        if (!list.length) return;
+        const done = list.filter(ch => doneCh.has(ch.id)).length;
+        const sorted = [...list.filter(ch => !doneCh.has(ch.id)), ...list.filter(ch => doneCh.has(ch.id))];
+        scrollBox.append(fold(`ch-${k}`, `${label} (${done} of ${list.length} done)`, done === list.length ? 'All done!' : '', sorted.map(chCard), 'chcol'));
+      });
       kids.push(scrollBox);
     }
     panel.replaceChildren(...kids);
     renderBank();
+    renderDeal();
     renderTrackingLine();
   }
 
@@ -3246,28 +3425,43 @@
     }, 'thumb');
   }
 
+  // One place as a tile: picture, name and state. Tapping an unlocked one flies there;
+  // tapping a locked one previews it and explains how to get it.
   function placeCard(T) {
     const open = themeOpen(T), using = themeId === T.id;
-    const owner = T.hero ? CREW.find(c => c.id === T.hero) : null;
-    const endMonth = T.months ? MONTHS[T.months[T.months.length - 1] - 1] : '';
-    const d = document.createElement('div');
-    d.className = 'ch place' + (using ? ' done' : '');
-    const body = document.createElement('div');
-    body.className = 'place-body';
-    const head = document.createElement('div');
-    head.className = 'ch-head';
+    const d = document.createElement('button');
+    d.type = 'button';
+    d.id = 'place-' + T.id;
+    const coinBuyable = !open && T.key && !(T.kind === 'bundle' && purchasesAvailable()) && wallet >= T.price;
+    d.className = 'tile' + (using ? ' using' : '') + (open ? '' : ' locked') + (coinBuyable ? ' buyable' : '');
     const name = document.createElement('strong');
     name.textContent = T.name;
     const st = document.createElement('span');
-    st.className = 'ch-state';
+    st.className = 'tile-state';
     st.textContent = using ? 'In use'
-      : open ? (T.kind === 'season' && !collected.has(T.id) ? 'Limited time' : 'Unlocked')
+      : open ? (T.kind === 'season' && !collected.has(T.id) ? 'Limited time' : 'Tap to use')
       : T.kind === 'bundle' ? (purchasesAvailable() ? BUNDLE_PRICE : `${T.price} coins`)
       : T.kind === 'coins' ? `${T.price} coins`
       : T.kind === 'challenge' ? 'Challenge'
       : `Back in ${MONTHS[T.months[0] - 1]}`;
-    head.append(name, st);
-    const p = document.createElement('p');
+    d.append(themeThumb(T), name, st);
+    d.addEventListener('click', e => {
+      e.stopPropagation();
+      if (open) {
+        clearTryOn();
+        if (!using) setTheme(T.id);
+        $('lockMsg').textContent = `${T.name}: ${placeNote(T)}`;
+        return;
+      }
+      setTryOn({ theme: T.id }, d);
+      placeLockedNote(T);
+    });
+    return d;
+  }
+  function placeNote(T) {
+    const open = themeOpen(T);
+    const owner = T.hero ? CREW.find(c => c.id === T.hero) : null;
+    const endMonth = T.months ? MONTHS[T.months[T.months.length - 1] - 1] : '';
     let note = T.desc;
     if (T.kind === 'bundle' && purchasesAvailable()) note += ` ${owner.name}’s world pack: this place plus all of ${owner.name}’s coin unlocks.`;
     if (T.kind === 'bundle' && !purchasesAvailable() && !open) note += ` ${owner.name}’s world. Costs ${T.price} coins. You have ${wallet}.`;
@@ -3281,24 +3475,21 @@
         : open ? ` Score 20 here before ${endMonth} ends to keep it forever.`
         : ` Returns in ${MONTHS[T.months[0] - 1]}.`;
     }
-    p.textContent = note;
-    body.append(head, p);
-    const row = document.createElement('div');
-    row.className = 'row-left';
-    const btn = (label, cls, fn) => {
+    return note;
+  }
+  function placeLockedNote(T) {
+    const msg = $('lockMsg');
+    msg.textContent = `Previewing ${T.name}. ${placeNote(T)}`;
+    const btn = (label, cls, id, fn) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = cls;
-      b.textContent = label;
+      b.id = id;
+      b.innerHTML = label;
       b.addEventListener('click', e => { e.stopPropagation(); fn(); });
-      row.append(b);
+      msg.append(' ', b);
     };
-    if (open && !using) btn('Use', 'go', () => { clearTryOn(); $('lockMsg').textContent = ''; setTheme(T.id); });
-    if (!open) btn('Preview', 'ghost', () => {
-      setTryOn({ theme: T.id }, d);
-      $('lockMsg').textContent = `Previewing ${T.name}. ${st.textContent === 'Challenge' ? 'Win its challenge to unlock it.' : 'Locked: ' + st.textContent + '.'}`;
-    });
-    if (!open && T.key && !(T.kind === 'bundle' && purchasesAvailable()) && wallet >= T.price) btn(`Buy for ${T.price}`, 'go', () => {
+    if (T.key && !(T.kind === 'bundle' && purchasesAvailable()) && wallet >= T.price) btn(`Buy for ${T.price}`, 'go', 'buyBtn', () => {
       wallet -= T.price;
       bought.add(T.key);
       saveWallet();
@@ -3306,15 +3497,13 @@
       tone(660, 0.08, 'square', 0.05); tone(990, 0.12, 'square', 0.05, null, 0.08);
       clearTryOn();
       setTheme(T.id);
-      $('lockMsg').textContent = `${T.name} is yours. ${wallet} coins left.`;
+      renderBank();
+      msg.textContent = `${T.name} is yours. ${wallet} coins left.`;
     });
-    if (T.kind === 'bundle' && !open) {
-      if (purchasesAvailable()) btn(`Buy ${BUNDLE_PRICE}`, 'go', () => buyBundle(T.hero));
-      if (adsAvailable()) btn('Try 1 run free', 'ghost', () => tryTheme(T.id));
+    if (T.kind === 'bundle') {
+      if (purchasesAvailable()) btn(`Buy ${BUNDLE_PRICE}`, 'go', 'bundleBtn', () => buyBundle(T.hero));
+      if (adsAvailable()) btn('<span class="adtag">AD</span> Fly here for 1 run', 'adbtn', 'placeTrialBtn', () => tryTheme(T.id));
     }
-    if (row.childElementCount) body.append(row);
-    d.append(themeThumb(T), body);
-    return d;
   }
 
   function setTheme(id) {
@@ -3456,6 +3645,18 @@
     });
   }
 
+  function challengeProgress(ch) {
+    const bests = runStats.best || {};
+    if (ch.value == null) return null;
+    switch (ch.type) {
+      case 'score': return [ch.who === 'all' ? Math.max(best, 0, ...Object.values(bests)) : (bests[ch.who] || 0), ch.value];
+      case 'runs': return [runStats.total || 0, ch.value];
+      case 'heroRuns': return [runStats.by[ch.who] || 0, ch.value];
+      case 'tourScore': return [CREW.filter(c => (bests[c.id] || 0) >= ch.value).length, CREW.length];
+      default: return null;
+    }
+  }
+
   function chCard(ch) {
     const isDone = doneCh.has(ch.id);
     const d = document.createElement('div');
@@ -3464,6 +3665,10 @@
     head.className = 'ch-head';
     const name = document.createElement('strong');
     name.textContent = ch.name;
+    const who = document.createElement('span');
+    who.className = 'ch-who';
+    who.textContent = ch.who === 'all' ? 'Everyone' : hero.name;
+    name.append(who);
     const st = document.createElement('span');
     st.className = 'ch-state';
     st.textContent = isDone ? 'Done' : ch.type === 'tour' ? `${tour.size} of ${CREW.length}` : 'Not yet';
@@ -3471,6 +3676,19 @@
     const p = document.createElement('p');
     p.textContent = ch.desc;
     d.append(head, p);
+    // A progress bar where the game keeps the numbers (best scores and run counts).
+    const prog = !isDone && challengeProgress(ch);
+    if (prog) {
+      const row = document.createElement('div');
+      row.className = 'ch-prog';
+      const meter = document.createElement('span');
+      meter.className = 'meter';
+      const fill = document.createElement('i');
+      fill.style.width = `${Math.min(100, Math.round((prog[0] / prog[1]) * 100))}%`;
+      meter.append(fill);
+      row.append(meter, document.createTextNode(`${Math.min(prog[0], prog[1])} / ${prog[1]}`));
+      d.append(row);
+    }
     if (ch.type === 'pattern') {
       const seq = document.createElement('div');
       seq.className = 'seq';
@@ -3669,8 +3887,10 @@
     const look = tryOn && tryOn.look ? tryOn.look : heroLook;
     const trailId = look.trail;
     previewScroll += drift * dt;
-    const px = PW * 0.58, py = PH * 0.4 + Math.sin(t * 2.4) * 9;
-    const r = 15;
+    // In the Locker the character is drawn bigger so outfit details are easy to see.
+    const zoom = pv.parentElement && pv.parentElement.id === 'lockerSlot';
+    const px = PW * (zoom ? 0.5 : 0.58), py = PH * (zoom ? 0.5 : 0.4) + Math.sin(t * 2.4) * (zoom ? 6 : 9);
+    const r = zoom ? 25 : 15;
     if (t - previewBurstAt > 0.9) {
       previewBurstAt = t;
       previewFlame = 1;
@@ -3908,6 +4128,10 @@
     // A free trial of a place lasts exactly one run.
     trialTheme = trialPending;
     trialPending = null;
+    // A one-run try-on of a locked item lasts exactly one run as well.
+    lookTrial = lookTrialPending;
+    lookTrialPending = null;
+    heroLook = lookTrial ? lookOf(hero, lookTrial.change) : lookOf(hero);
     if (trialTheme) track('theme_trial_run', { id: trialTheme });
     refreshMusic();
     reset();
@@ -4019,6 +4243,10 @@
     $('coinLine').textContent = coinSummary(runEarned);
     renderGoal();
     if (trialTheme) $('coinLine').textContent += ` Like ${activeTheme().name}? Find it in the Locker under Places.`;
+    if (lookTrial) {
+      const it = lookTrial.item;
+      $('coinLine').textContent += it.challenge ? ` Liked ${it.name}? Win its challenge to keep it.` : ` Liked ${it.name}? It's ${priceOf(it)} coins in the Locker.`;
+    }
     const ul = $('unlocks');
     if (fresh.length) {
       ul.replaceChildren();
@@ -4156,7 +4384,7 @@
     g.addColorStop(0, T.sky[0]);
     g.addColorStop(1, T.sky[1]);
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(VL, 0, VR - VL, H);
     const [kind, col] = T.orb;
     const ox = W * 0.82, oy = H * 0.14, orr = 26 * u;
     ctx.beginPath(); ctx.arc(ox, oy, orr, 0, Math.PI * 2);
@@ -4179,28 +4407,28 @@
       const par = waves ? 0.4 : 0.08;
       const wl = waves ? 28 : 95;
       ctx.beginPath();
-      ctx.moveTo(-10, groundY() + 5);
-      for (let x = -10; x <= W + 10; x += 8) {
+      ctx.moveTo(VL - 10, groundY() + 5);
+      for (let x = VL - 10; x <= VR + 10; x += 8) {
         const ph = (x + scroll * par) / wl;
         ctx.lineTo(x, top - Math.sin(ph) * amp - (waves ? 0 : Math.sin(ph * 0.37 + 1) * amp * 0.6));
       }
-      ctx.lineTo(W + 10, groundY() + 5);
+      ctx.lineTo(VR + 10, groundY() + 5);
       ctx.closePath();
       paint(ctx, T.farCol, 2 * u);
       if (waves) {
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
         ctx.lineWidth = 2 * u;
         const step = 46 * u, off = (scroll * 0.4) % step;
-        for (let x = -off; x < W; x += step) { ctx.beginPath(); ctx.moveTo(x, top + 14 * u); ctx.lineTo(x + 16 * u, top + 14 * u); ctx.stroke(); }
+        for (let x = -off - Math.ceil(-VL / step) * step; x < VR; x += step) { ctx.beginPath(); ctx.moveTo(x, top + 14 * u); ctx.lineTo(x + 16 * u, top + 14 * u); ctx.stroke(); }
       }
       return;
     }
     const span = W / 3.2 * mountains.length;
     const off = (scroll * 0.08) % span;
-    for (let rep = 0; rep < 2; rep++) {
+    for (let rep = -2; rep < 3; rep++) {
       mountains.forEach((m, mi) => {
         const x = m.x + rep * span - off;
-        if (x < -m.w || x > W + m.w) return;
+        if (x < VL - m.w || x > VR + m.w) return;
         if (T.far === 'skyline') {
           const bw = m.w * 0.32, bh = m.h * 0.78, by = base + 30 * u - bh;
           ctx.beginPath(); ctx.rect(x - bw / 2, by, bw, bh); paint(ctx, T.farCol, 2 * u);
@@ -4240,10 +4468,10 @@
     const base = groundY() + 2 * u;
     const cols = T.midCols;
     const night = T.orb[0] === 'moon';
-    for (let rep = 0; rep < 2; rep++) {
+    for (let rep = -2; rep < 3; rep++) {
       town.forEach((b, bi) => {
         const x = b.x + rep * span - off;
-        if (x < -80 * u || x > W + 80 * u) return;
+        if (x < VL - 80 * u || x > VR + 80 * u) return;
         const col = cols ? cols[bi % cols.length] : b.col;
         switch (T.mid) {
           case 'towers': {
@@ -4352,21 +4580,22 @@
     const T = activeTheme();
     const y = groundY();
     ctx.beginPath();
-    ctx.moveTo(0, H);
-    ctx.lineTo(0, y);
     const step = 60 * u, off = scroll % step;
-    for (let x = -off; x <= W + step; x += step) {
+    const x0 = -off - Math.ceil(-VL / step) * step;
+    ctx.moveTo(x0, H);
+    ctx.lineTo(x0, y);
+    for (let x = x0; x <= VR + step; x += step) {
       ctx.quadraticCurveTo(x + step / 2, y - (T.road ? 0 : 6 * u), x + step, y);
     }
-    ctx.lineTo(W, H);
+    ctx.lineTo(VR + step * 2, H);
     ctx.closePath();
     paint(ctx, T.ground[0], 2.5 * u);
     ctx.fillStyle = T.ground[1];
-    ctx.fillRect(0, y + 20 * u, W, H - y);
+    ctx.fillRect(VL, y + 20 * u, VR - VL, H - y);
     if (T.road) {
       const dash = 40 * u, doff = scroll % dash;
       ctx.fillStyle = '#ffffff';
-      for (let x = -doff; x < W; x += dash) ctx.fillRect(x, y + 11 * u, 20 * u, 3 * u);
+      for (let x = -doff - Math.ceil(-VL / dash) * dash; x < VR; x += dash) ctx.fillRect(x, y + 11 * u, 20 * u, 3 * u);
     }
   }
 
@@ -4649,21 +4878,45 @@
     ctx.lineWidth = 2.5 * u * S; ctx.strokeStyle = INK; ctx.stroke();
   }
 
+  // The scenery's left and right edges in play-area units. Normally the play area itself;
+  // while drawing the scenery they reach the screen edges.
+  let VL = 0, VR = 0;
   function draw() {
+    VL = 0; VR = W;
     if (coverOpts && drawCover) { drawCover(); return; }
     const framed = OX > 1 || OY > 1;
     if (framed) drawBackdrop();
     ctx.setTransform(dpr * S, 0, 0, dpr * S, dpr * OX, dpr * OY);
+    // Scenery fills the whole screen; obstacles, the player and effects stay inside the play area.
+    const sx = shake > 0 && !reduceMotion ? (Math.random() - 0.5) * 10 * u * shake : 0;
+    const sy = shake > 0 && !reduceMotion ? (Math.random() - 0.5) * 10 * u * shake : 0;
+    VL = -OX / S; VR = W + OX / S;
+    const wide = draw => {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(VL, 0, VR - VL, H); ctx.clip();
+      ctx.translate(sx, sy);
+      draw();
+      ctx.restore();
+    };
+    wide(() => { drawSky(); drawFar(); drawMid(); });
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-    if (shake > 0 && !reduceMotion) {
-      ctx.translate((Math.random() - 0.5) * 10 * u * shake, (Math.random() - 0.5) * 10 * u * shake);
-    }
-    drawSky();
-    drawFar();
-    drawMid();
+    ctx.translate(sx, sy);
     drawPoles();
-    drawGround();
+    ctx.restore();
+    wide(() => {
+      drawGround();
+      if (OX > 1) {
+        // Soften the sides so the play area stands out.
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+        ctx.fillRect(VL - 20, -20, -VL + 20, H + 40);
+        ctx.fillRect(W, -20, VR - W + 20, H + 40);
+      }
+    });
+    VL = 0; VR = W;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    ctx.translate(sx, sy);
     trailDraw(ctx, gameTrail, u);
     drawPlayer();
     if (state !== 'ready') drawBubble(ctx, player.x, player.y - headR() * 2.4 * hero.size, u, W);
@@ -4702,6 +4955,7 @@
   $('startBtn').addEventListener('click', begin);
   $('againBtn').addEventListener('click', e => { e.stopPropagation(); playAgain(); });
   function backToReady() {
+    if (lookTrial) { lookTrial = null; heroLook = lookOf(hero); }
     if (trialTheme) { trialTheme = null; refreshMusic(); }
     if (state !== 'ready') { state = 'ready'; reset(); renderTracker(); }
   }
@@ -4915,12 +5169,25 @@
     },
     isMuted: () => gameMuted
   };
-  $('copyBtn').addEventListener('click', () => {
+  // Share uses the phone's share sheet where there is one, otherwise copies the message.
+  // Inside a game site's frame the page address isn't shareable, so the link comes from
+  // JetpackersConfig.shareUrl (set in platform.js) or is left out.
+  $('copyBtn').addEventListener('click', e => {
+    e.stopPropagation();
     const text = `I scored ${score} in Main Character Airlines as ${hero.name} the ${hero.group.toLowerCase()}. Rank: ${rankFor(score)}. Best: ${best}. Beat that.`;
+    let framed = false;
+    try { framed = window.top !== window; } catch (err) { framed = true; }
+    const url = CONFIG.shareUrl || (framed ? '' : location.href.split('#')[0]);
     const done = msg => { $('copied').textContent = msg; };
+    track('share', { score });
+    if (navigator.share) {
+      navigator.share(url ? { title: 'Main Character Airlines', text, url } : { title: 'Main Character Airlines', text }).catch(() => {});
+      return;
+    }
+    const full = url ? `${text} ${url}` : text;
     try {
-      navigator.clipboard.writeText(text).then(() => done('Copied. Send it to the group chat.'), () => done(text));
-    } catch (e) { done(text); }
+      navigator.clipboard.writeText(full).then(() => done('Copied. Send it to the group chat.'), () => done(full));
+    } catch (err) { done(full); }
   });
   window.addEventListener('keydown', e => {
     if (e.target.closest && e.target.closest('textarea')) return;
