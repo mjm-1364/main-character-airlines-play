@@ -401,6 +401,11 @@
   .go:active, .ghost:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
   .go:focus-visible, .ghost:focus-visible, .pick:focus-visible, .chip:focus-visible, .swatch:focus-visible, .tab:focus-visible, .sound:focus-visible, .flagrow select:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
   .hint { font-size: 0.8rem; font-weight: 800; opacity: 0.6; }
+  .daily { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; background: #fff3c4; border: 2px solid var(--ink); border-radius: 8px; padding: 6px 10px; font-weight: 800; font-size: 0.85rem; }
+  .daily .days { display: flex; gap: 3px; }
+  .daily .days i { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink); background: #ffffff; }
+  .daily .days i.on { background: var(--gold); }
+  .daily button { padding: 4px 12px; font-size: 0.8rem; }
   .copied { font-size: 0.85rem; font-weight: 800; color: var(--red); min-height: 1.2em; margin: -4px 0 0; }
   @media (prefers-reduced-motion: reduce) { .pick, .go, .ghost { transition: none; } }
   .left { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -465,8 +470,9 @@
         <button class="ghost" id="lockerBtn" type="button">Locker</button>
         <button class="ghost" id="settingsBtn" type="button">Settings</button>
       </div>
+      <div class="daily" id="dailyBox" hidden></div>
       <div class="bank bankline"></div>
-      <div class="hint">Tap, click, or press Space to boost. Coins and challenges unlock new looks in the Locker.</div>
+      <div class="hint">Tap, click, or press Space to boost. Spend coins on new looks in the Locker.</div>
       <div class="hint" id="voiceHint" hidden></div>
     </div>
   </div>
@@ -1359,7 +1365,7 @@
   let hist = [], curRow = 0, doubled = false, runTime = 0, runDone = [], lastMilestone = 0;
   let waiting = false, paused = false, spawned = 0, tutorialDone = false;
   // Per-run ad state: one continue per run, one coin doubling per run, coins already added to the bank.
-  let continued = false, coinsDoubled = false, banked = 0, runCounted = false;
+  let continued = false, coinsDoubled = false, banked = 0, bonusBanked = 0, runEarned = 0, runCounted = false;
   // Runs finished (in total and per character), each character's best score, and the tracked challenge.
   let runStats = { total: 0, by: {}, best: {} }, trackedId = null;
   try { runStats = Object.assign(runStats, JSON.parse(localStorage.getItem('jetpackersRunStats') || '{}')); } catch (e) {}
@@ -3304,6 +3310,7 @@
       ok = await placeholderAd(countdownLabel);
     }
     musicDuck(false);
+    lastAdAt = performance.now();
     track(ok ? 'ad_rewarded' : 'ad_skipped', { placement });
     return ok;
   }
@@ -3314,8 +3321,8 @@
     const cont = $('continueBtn'), dbl = $('doubleBtn');
     if (!adsAvailable()) { $('adRow').hidden = true; return; }
     cont.hidden = continued;
-    dbl.hidden = coinsDoubled || runCoins <= 0;
-    dbl.lastChild.textContent = ` Double coins (+${runCoins})`;
+    dbl.hidden = coinsDoubled || runEarned <= 0;
+    dbl.lastChild.textContent = ` Double coins (+${runEarned})`;
     $('adRow').hidden = cont.hidden && dbl.hidden;
   }
 
@@ -3339,13 +3346,13 @@
   }
 
   async function doubleCoins() {
-    if (coinsDoubled || runCoins <= 0 || state !== 'over' || !adsAvailable()) return;
+    if (coinsDoubled || runEarned <= 0 || state !== 'over' || !adsAvailable()) return;
     const ok = await watchAd('double_coins', 'Doubling your coins in');
     if (!ok) return;
     coinsDoubled = true;
-    const fresh = addCoins(runCoins);
-    track('coins_doubled', { coins: runCoins });
-    $('coinLine').textContent = coinSummary(runCoins * 2).replace(' this run.', ' this run (doubled).');
+    const fresh = addCoins(runEarned);
+    track('coins_doubled', { coins: runEarned });
+    $('coinLine').textContent = coinSummary(runEarned * 2, true);
     if (fresh.length) {
       const ul = $('unlocks');
       ul.replaceChildren();
@@ -3364,7 +3371,7 @@
   $('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueRun(); });
   $('doubleBtn').addEventListener('click', e => { e.stopPropagation(); doubleCoins(); });
 
-  function placeholderAd(countdownLabel = 'Your free run starts in') {
+  function placeholderAd(countdownLabel = 'Your free run starts in', about = 'A rewarded video ad plays here in the released game. Connect your ad network through the showRewardedAd hook in platform.js.') {
     return new Promise(resolve => {
       let left = 3, finished = false, timer = null;
       const finish = ok => {
@@ -3376,7 +3383,7 @@
         resolve(ok);
       };
       const render = () => showInfo('Ad break', [
-        ['', 'A rewarded video ad plays here in the released game. Connect your ad network through the showRewardedAd hook in platform.js.'],
+        ['', about],
         ['', left > 0 ? `${countdownLabel} ${left}…` : 'Starting…']
       ], [['Skip', () => finish(false), false]]);
       $('infoClose').hidden = true;
@@ -3452,9 +3459,15 @@
     return left.length ? left.reduce((a, b) => (b.item.price < a.item.price ? b : a)) : null;
   }
 
-  function coinSummary(earned) {
+  // One coin for every 5 points scored, paid with the coins collected.
+  const scoreBonus = sc => Math.floor(sc / 5);
+  function coinSummary(earned, doubled) {
     const nx = nextBuy();
-    return `+${earned} coin${earned === 1 ? '' : 's'} this run. Wallet: ${wallet}.` +
+    const parts = [];
+    if (runCoins) parts.push(`${runCoins} collected${(hero.coinMult || 1) > 1 ? ` x${hero.coinMult}` : ''}`);
+    if (scoreBonus(score)) parts.push(`${scoreBonus(score)} score bonus`);
+    if (doubled) parts.push('doubled');
+    return `+${earned} coin${earned === 1 ? '' : 's'} this run${parts.length ? ` (${parts.join(', ')})` : ''}. Wallet: ${wallet}.` +
       (nx && nx.item.price > wallet ? ` ${nx.item.price - wallet} more for ${nx.label}.` : ' Spend them in the Locker.');
   }
 
@@ -3483,6 +3496,73 @@
     runs.innerHTML = `<span>${hero.name}’s runs <b>${runsAs(hero.id)}</b></span>`;
     el.replaceChildren(row, runs);
   }
+
+  // ---------- Starter gift and daily reward ----------
+  // New players start with enough coins for a few cheap items. Coming back on consecutive days
+  // pays more, up to day 7, then the week repeats. Missing a day starts again at day 1.
+  const STARTER_GIFT = 50;
+  const DAILY = [20, 25, 30, 40, 50, 60, 100];
+  let giftNote = '';
+  if (walletNew && bank === 0) {
+    wallet += STARTER_GIFT;
+    saveWallet();
+    giftNote = `Welcome aboard! ${STARTER_GIFT} free coins are in your wallet.`;
+  }
+  let daily = { last: '', streak: 0 };
+  try { daily = Object.assign(daily, JSON.parse(localStorage.getItem('jetpackersDaily') || '{}')); } catch (e) {}
+  const dayKey = (off = 0) => { const d = new Date(); d.setDate(d.getDate() + off); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+  const dailyReady = () => daily.last !== dayKey();
+  const dailyDay = () => (daily.last === dayKey(-1) ? daily.streak % DAILY.length : 0) + 1;
+  function claimDaily(mult) {
+    if (!dailyReady()) return;
+    const day = dailyDay(), amount = DAILY[day - 1] * mult;
+    daily = { last: dayKey(), streak: daily.last === dayKey(-1) ? daily.streak + 1 : 1 };
+    try { localStorage.setItem('jetpackersDaily', JSON.stringify(daily)); } catch (e) {}
+    wallet += amount;
+    saveWallet();
+    track('daily_reward', { day, amount, doubled: mult > 1 });
+    tone(660, 0.08, 'square', 0.05); tone(990, 0.12, 'square', 0.05, null, 0.08);
+    giftNote = `+${amount} coins. Come back tomorrow for day ${day % DAILY.length + 1}.`;
+    renderDaily();
+    renderBank();
+  }
+  function renderDaily() {
+    const box = $('dailyBox');
+    const kids = [];
+    if (dailyReady()) {
+      const day = dailyDay();
+      const dots = document.createElement('span');
+      dots.className = 'days';
+      dots.setAttribute('aria-hidden', 'true');
+      DAILY.forEach((_, i) => { const d = document.createElement('i'); if (i < day) d.className = 'on'; dots.append(d); });
+      const label = document.createElement('span');
+      label.textContent = `Daily reward, day ${day}: ${DAILY[day - 1]} coins`;
+      const take = document.createElement('button');
+      take.type = 'button'; take.className = 'go'; take.id = 'dailyBtn';
+      take.textContent = 'Claim';
+      take.addEventListener('click', e => { e.stopPropagation(); claimDaily(1); });
+      kids.push(dots, label, take);
+      if (adsAvailable()) {
+        const dbl = document.createElement('button');
+        dbl.type = 'button'; dbl.className = 'adbtn'; dbl.id = 'dailyAdBtn';
+        dbl.innerHTML = '<span class="adtag">AD</span> Claim x2';
+        dbl.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (await watchAd('daily_double', 'Doubling your reward in')) claimDaily(2);
+        });
+        kids.push(dbl);
+      }
+    }
+    if (giftNote) {
+      const g = document.createElement('span');
+      g.textContent = giftNote;
+      kids.unshift(g);
+      if (kids.length > 1) g.style.flexBasis = '100%';
+    }
+    box.replaceChildren(...kids);
+    box.hidden = !kids.length;
+  }
+  renderDaily();
 
   syncPicks();
   renderCustom();
@@ -3596,7 +3676,7 @@
     gameTrail.parts = []; gameTrail.ribbon = [];
     score = 0; scroll = 0; runCoins = 0;
     hist = []; curRow = 0; doubled = false; runTime = 0; runDone = []; lastMilestone = 0; spawned = 0;
-    continued = false; coinsDoubled = false; banked = 0; runCounted = false;
+    continued = false; coinsDoubled = false; banked = 0; bonusBanked = 0; runEarned = 0; runCounted = false;
     shieldReady = !!hero.shield;
     setStreak(0);
     scoreEl.textContent = '0';
@@ -3757,7 +3837,37 @@
     if (state === 'ready') begin();
     else if (state === 'play' && waiting) { waiting = false; flap(); hook('gameplayStart'); }
     else if (state === 'play') flap();
-    else if (state === 'over' && performance.now() - overAt > 450) begin();
+    else if (state === 'over' && performance.now() - overAt > 450) playAgain();
+  }
+
+  // ---------- Between-run ad ----------
+  // Shown only when the player starts another run from the game-over screen, never mid-run.
+  // At most one every 3 minutes, never in the first 3 runs of a visit, and the clock restarts
+  // after any rewarded ad. The site's own ad limits apply on top of this.
+  const BREAK_EVERY = 180000, BREAK_AFTER_RUNS = 3;
+  let lastAdAt = performance.now(), sessionRuns = 0, breakBusy = false;
+  function breakDue() {
+    if (sessionRuns < BREAK_AFTER_RUNS || performance.now() - lastAdAt < BREAK_EVERY) return false;
+    return typeof Hooks.showMidgameAd === 'function' || CONFIG.testMode;
+  }
+  async function playAgain() {
+    if (breakBusy) return;
+    if (breakDue()) {
+      breakBusy = true;
+      musicDuck(true);
+      let shown = false;
+      if (typeof Hooks.showMidgameAd === 'function') {
+        try { shown = await Hooks.showMidgameAd(); } catch (e) {}
+      } else {
+        shown = await placeholderAd('Next run in', 'A short ad plays here between runs in the released game, at most once every 3 minutes.');
+      }
+      musicDuck(false);
+      lastAdAt = performance.now();
+      track('ad_midgame', { shown: !!shown });
+      breakBusy = false;
+      if (state !== 'over') return;
+    }
+    begin();
   }
 
   function crash(reason) {
@@ -3784,13 +3894,19 @@
     if (!runCounted) {
       runCounted = true;
       runStats.total++;
+      sessionRuns++;
       runStats.by[hero.id] = (runStats.by[hero.id] || 0) + 1;
     }
     runStats.best[hero.id] = Math.max(runStats.best[hero.id] || 0, score);
     try { localStorage.setItem('jetpackersRunStats', JSON.stringify(runStats)); } catch (e) {}
     checkChallenges();
-    const fresh = addCoins(runCoins - banked);
+    // Wallet payout: coins collected (Bradley's count double) plus 1 coin for every 5 points.
+    const bonus = scoreBonus(score);
+    const gain = (runCoins - banked) * (hero.coinMult || 1) + (bonus - bonusBanked);
+    runEarned += gain;
+    const fresh = addCoins(gain);
     banked = runCoins;
+    bonusBanked = bonus;
     track('run_end', { hero: hero.id, theme: activeTheme().id, trial: !!trialTheme, continued, score, coins: runCoins, seconds: Math.round(runTime), cause: reason, challenges: runDone.length });
     if (fresh.length) track('unlock', { count: fresh.length });
     hook('gameplayStop');
@@ -3815,7 +3931,7 @@
     $('rank').textContent = rankFor(score);
     $('finalScore').textContent = score;
     $('finalBest').textContent = best;
-    $('coinLine').textContent = coinSummary(runCoins);
+    $('coinLine').textContent = coinSummary(runEarned);
     if (trialTheme) $('coinLine').textContent += ` Like ${activeTheme().name}? Find it in the Locker under Places.`;
     const ul = $('unlocks');
     if (fresh.length) {
@@ -4497,7 +4613,7 @@
     act();
   });
   $('startBtn').addEventListener('click', begin);
-  $('againBtn').addEventListener('click', begin);
+  $('againBtn').addEventListener('click', e => { e.stopPropagation(); playAgain(); });
   function backToReady() {
     if (trialTheme) { trialTheme = null; refreshMusic(); }
     if (state !== 'ready') { state = 'ready'; reset(); renderTracker(); }
@@ -4516,6 +4632,7 @@
     startCard.hidden = false;
     $('homeSlot').append(pv);
     backToReady();
+    renderDaily();
   }
   $('switchBtn').addEventListener('click', showLocker);
   $('lockerBtn').addEventListener('click', e => { e.stopPropagation(); showLocker(); });
