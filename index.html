@@ -328,6 +328,8 @@
   .chip canvas { width: 40px; height: 16px; flex: none; }
   .chip canvas.coin { width: 18px; height: 18px; }
   .chip.locked canvas { opacity: 0.45; }
+  .chip.locked.buyable { background: #fff4cc; border-style: solid; color: var(--ink); }
+  .buybtn { margin-left: 6px; padding: 4px 12px; font-size: 0.8rem; }
   .chip.trying, .ch.trying { outline: 3px solid #ffd23f; outline-offset: 1px; }
   .fold { border: 2px solid var(--ink); border-radius: 8px; background: #fffaf0; }
   .fold > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 7px 10px; font-weight: 900; font-size: 0.8rem; }
@@ -574,6 +576,7 @@
   const INK = '#222222';
   const PD = Math.min(window.devicePixelRatio || 1, 2);
   const LOCK_SVG = '<svg viewBox="0 0 12 14" width="10" height="12" aria-hidden="true"><rect x="1" y="6" width="10" height="7.5" rx="1.5" fill="currentColor"/><path d="M3.5 6V4.2a2.5 2.5 0 0 1 5 0V6" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>';
+  const COIN_SVG = '<svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true"><circle cx="6" cy="6" r="5" fill="#f7c531" stroke="currentColor" stroke-width="1.4"/></svg>';
 
   const SKINS = ['#f6d3b3', '#e9b48a', '#c98e63', '#8d5a3b', '#5c3a24'];
 
@@ -1096,18 +1099,26 @@
     drawCoinStyle(c, k.base, r, k.v);
   }
 
-  // Every lockable item, for the "new unlocks" list at game over. Items with an owner unlock from the
-  // coins collected while playing that character; the rest unlock from the lifetime total.
+  // Every item bought with coins. "unlock" is the old lifetime threshold; the wallet price is
+  // gentler because coins are now spent, not just counted. Character items also need some runs
+  // as that character before they can be bought.
+  const priceFor = n => Math.max(10, Math.round(Math.pow(n, 0.78) / 5) * 5);
+  const runsFor = n => (n <= 150 ? 1 : n <= 500 ? 3 : n <= 1200 ? 6 : n <= 2500 ? 10 : 15);
   const UNLOCKABLES = [];
+  const sellable = (item, key, label, owner) => {
+    item.key = key;
+    item.price = priceFor(item.unlock);
+    if (owner) { item.owner = owner; item.runs = runsFor(item.unlock); }
+    UNLOCKABLES.push({ item, unlock: item.unlock, owner, label });
+  };
   for (const c of CREW) {
-    c.outfits.forEach(o => o.unlock && UNLOCKABLES.push({ unlock: o.unlock, owner: c.id, label: `${o.name} outfit (${c.name})` }));
-    c.accs.forEach(a => a.unlock && UNLOCKABLES.push({ unlock: a.unlock, owner: c.id, label: `${a.name} (${c.name})` }));
-    c.sigTrails.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, owner: c.id, label: `${tr.name} trail (${c.name})` }));
-    UNLOCKABLES.push({ unlock: c.coin.unlock, owner: c.id, label: `${c.coin.name} coin (${c.name})` });
-    c.coins.forEach(co => co.unlock && UNLOCKABLES.push({ unlock: co.unlock, owner: c.id, label: `${co.name} coin (${c.name})` }));
+    c.outfits.forEach((o, i) => o.unlock && sellable(o, `o-${c.id}-${i}`, `${o.name} outfit (${c.name})`, c.id));
+    c.accs.forEach(a => a.unlock && sellable(a, `a-${c.id}-${a.id}`, `${a.name} (${c.name})`, c.id));
+    c.sigTrails.forEach(tr => tr.unlock && sellable(tr, `t-${c.id}-${tr.id}`, `${tr.name} trail (${c.name})`, c.id));
+    [c.coin, ...c.coins].forEach(co => co.unlock && sellable(co, `c-${c.id}-${co.id}`, `${co.name} coin (${c.name})`, c.id));
   }
-  TRAILS.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, label: `${tr.name} trail` }));
-  COINS.forEach(co => co.unlock && UNLOCKABLES.push({ unlock: co.unlock, label: `${co.name} coin` }));
+  TRAILS.forEach(tr => tr.unlock && sellable(tr, `t-${tr.id}`, `${tr.name} trail`));
+  COINS.forEach(co => co.unlock && sellable(co, `c-${co.id}`, `${co.name} coin`));
 
   // ---------- Saved progress ----------
   let hero = CREW[0];
@@ -1118,8 +1129,13 @@
   try { looks = JSON.parse(localStorage.getItem('jetpackersLooks') || '{}') || {}; } catch (e) { looks = {}; }
   try { const f = localStorage.getItem('jetpackersFlag'); if (FLAGS.some(x => x[0] === f)) flagId = f; } catch (e) {}
   try { bank = parseInt(localStorage.getItem('jetpackersBank') || '0', 10) || 0; } catch (e) {}
-  // Coins collected per character, which unlock that character's own items.
-  let heroBank = {};
+  // Coins collected per character (kept for stats), the spendable wallet, and what has been bought.
+  let heroBank = {}, wallet = 0, bought = new Set(), walletNew = true;
+  try {
+    const w = localStorage.getItem('jetpackersWallet');
+    if (w !== null) { wallet = parseInt(w, 10) || 0; walletNew = false; }
+    bought = new Set(JSON.parse(localStorage.getItem('jetpackersBought') || '[]'));
+  } catch (e) {}
   try { heroBank = JSON.parse(localStorage.getItem('jetpackersHeroBank') || '{}') || {}; } catch (e) { heroBank = {}; }
   const heroCoins = id => heroBank[id] || 0;
   let doneCh = new Set(), tour = new Set(), voiceMode = 'real';
@@ -1135,8 +1151,9 @@
   // Challenge rewards stay earn-only.
   const isOpen = item => {
     if (item.challenge) return doneCh.has(item.challenge);
+    if (!item.key) return true;
     if (item.owner && owned.has('bundle-' + item.owner)) return true;
-    return (item.owner ? heroCoins(item.owner) : bank) >= (item.unlock || 0);
+    return bought.has(item.key);
   };
 
   // ---------- Places (themes) ----------
@@ -1144,7 +1161,7 @@
   // so nothing a player buys makes the game easier.
   //   kind 'free'   : always open
   //   kind 'bundle' : part of a character's world pack (purchase), or tried for one run after an ad
-  //   kind 'coins'  : opens at a lifetime coin total
+  //   kind 'coins'  : bought from the wallet (price from its old lifetime total)
   //   kind 'season' : open during its months; scoring 20 with it during the season keeps it forever
   const THEMES = [
     { id: 'snow', name: 'Powder Peak', kind: 'free', desc: 'The original snowy mountain town.',
@@ -1224,7 +1241,7 @@
   const CONFIG = window.JetpackersConfig || { testMode: true };
   const adsAvailable = () => CONFIG.testMode || typeof (window.JetpackersHooks || {}).showRewardedAd === 'function';
   const purchasesAvailable = () => CONFIG.testMode || typeof (window.JetpackersHooks || {}).purchase === 'function';
-  // Where there is no store, character worlds unlock at a lifetime coin total instead.
+  // Where there is no store, character worlds are bought from the wallet instead.
   THEMES.filter(x => x.kind === 'bundle').forEach((x, i) => { x.coinPrice = 450 + i * 75; });
 
   // Expansion: 52 more places, each a time-of-day or mood version of a hand-made place.
@@ -1273,8 +1290,8 @@
   const nowMonth = () => new Date().getMonth() + 1;
   const inSeason = th => !!th.months && th.months.includes(nowMonth());
   function themeOpen(th) {
-    if (th.kind === 'bundle') return owned.has('bundle-' + th.hero) || (!purchasesAvailable() && bank >= th.coinPrice);
-    if (th.kind === 'coins') return bank >= th.unlock;
+    if (th.kind === 'bundle') return owned.has('bundle-' + th.hero) || (!purchasesAvailable() && bought.has(th.key));
+    if (th.kind === 'coins') return bought.has(th.key);
     if (th.kind === 'challenge') return doneCh.has(th.challenge);
     if (th.kind === 'season') return inSeason(th) || collected.has(th.id);
     return true;
@@ -1284,8 +1301,24 @@
     if (saved && themeOpen(saved)) themeId = saved.id;
   } catch (e) {}
   const activeTheme = () => THEMES.find(x => x.id === (trialTheme || themeId)) || THEMES[0];
-  THEMES.filter(x => x.kind === 'coins').forEach(x => UNLOCKABLES.push({ unlock: x.unlock, label: `${x.name} place` }));
-  if (!purchasesAvailable()) THEMES.filter(x => x.kind === 'bundle').forEach(x => UNLOCKABLES.push({ unlock: x.coinPrice, label: `${x.name} place` }));
+  THEMES.forEach(x => {
+    if (x.kind !== 'coins' && x.kind !== 'bundle') return;
+    x.key = 'p-' + x.id;
+    x.isPlace = true;
+    x.price = priceFor(x.kind === 'bundle' ? x.coinPrice : x.unlock);
+    if (x.kind === 'coins' || !purchasesAvailable()) UNLOCKABLES.push({ item: x, unlock: x.kind === 'bundle' ? x.coinPrice : x.unlock, label: `${x.name} place` });
+  });
+  // First load with the wallet: keep everything the old lifetime and per-character totals had opened.
+  if (walletNew) {
+    UNLOCKABLES.forEach(u => { if ((u.owner ? heroCoins(u.owner) : bank) >= u.unlock) bought.add(u.item.key); });
+    saveWallet();
+  }
+  function saveWallet() {
+    try {
+      localStorage.setItem('jetpackersWallet', String(wallet));
+      localStorage.setItem('jetpackersBought', JSON.stringify([...bought]));
+    } catch (e) {}
+  }
 
   const trailOptions = p => [...p.sigTrails.map(x => Object.assign({ sig: true }, x)), ...TRAILS];
   const coinOptions = p => [...[p.coin, ...p.coins].map(x => Object.assign({ sig: true }, x)), ...COINS];
@@ -2815,19 +2848,54 @@
     tone(700, 0.06, 'square', 0.035, 1000);
   }
 
-  function lockedNote(item) {
+  // Why an item is locked, and a Buy button when the wallet and run count allow it.
+  // onBuy runs after a purchase (usually equips the item).
+  const runsAs = id => runStats.by[id] || 0;
+  const runsShort = item => (item.owner ? Math.max(0, item.runs - runsAs(item.owner)) : 0);
+  const canBuy = item => !!item.key && !item.challenge && runsShort(item) === 0 && wallet >= item.price;
+  function buy(item) {
+    if (!canBuy(item)) return false;
+    wallet -= item.price;
+    bought.add(item.key);
+    saveWallet();
+    track('buy', { item: item.key, price: item.price });
+    tone(660, 0.08, 'square', 0.05); tone(990, 0.12, 'square', 0.05, null, 0.08);
+    return true;
+  }
+  function lockedNote(item, onBuy) {
+    const msg = $('lockMsg');
     let how;
     if (item.challenge) {
       const ch = CHALLENGES.find(x => x.id === item.challenge);
       how = `Complete the ${ch.name} challenge to unlock it. ${ch.desc}`;
-    } else if (item.owner) {
+    } else if (runsShort(item)) {
       const who = CREW.find(c => c.id === item.owner).name;
-      how = `Collect ${item.unlock} coins while playing as ${who} to unlock it. ${who} has ${heroCoins(item.owner)}.`;
+      const left = runsShort(item);
+      how = `Costs ${item.price} coins. Fly ${left} more run${left === 1 ? '' : 's'} as ${who} to be able to buy it.`;
+    } else if (wallet < item.price) {
+      how = `Costs ${item.price} coins. You have ${wallet}, ${item.price - wallet} to go.`;
     } else {
-      how = `Collect ${item.unlock} coins in total, with any character, to unlock it. You have ${bank}.`;
+      how = `Costs ${item.price} coins. You have ${wallet}.`;
     }
-    $('lockMsg').textContent = `Previewing ${item.name}. ${how}`;
-    tone(200, 0.08, 'square', 0.03);
+    msg.textContent = `Previewing ${item.name}. ${how}`;
+    if (canBuy(item)) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'go buybtn';
+      b.id = 'buyBtn';
+      b.textContent = `Buy for ${item.price}`;
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        if (!buy(item)) return;
+        clearTryOn();
+        if (onBuy) onBuy(); else renderCustom();
+        renderBank();
+        msg.textContent = `${item.name} is yours. ${wallet} coins left.`;
+      });
+      msg.append(' ', b);
+    } else {
+      tone(200, 0.08, 'square', 0.03);
+    }
   }
 
   // ---------- Try-on ----------
@@ -2875,12 +2943,11 @@
   function sections(key, items, makeChip) {
     const yours = [], coins = [], wins = [];
     items.forEach(it => (isOpen(it) ? yours : it.challenge ? wins : coins).push(it));
-    coins.sort((a, b) => (a.unlock || 0) - (b.unlock || 0));
+    coins.sort((a, b) => (a.price || 0) - (b.price || 0));
     const out = [group(`Yours (${yours.length})`, yours.map(makeChip))];
     if (coins.length) {
-      const next = coins[0];
-      const have = next.owner ? heroCoins(next.owner) : bank;
-      out.push(fold(`${key}-coins`, `Earn with coins (${coins.length})`, `Next: ${next.name}, ${have}/${next.unlock}`, coins.map(makeChip)));
+      const ready = coins.filter(canBuy).length;
+      out.push(fold(`${key}-coins`, `Buy with coins (${coins.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${coins[0].price}`, coins.map(makeChip)));
     }
     if (wins.length) out.push(fold(`${key}-wins`, `Win in challenges (${wins.length})`, 'Tap one to preview it', wins.map(makeChip)));
     return out;
@@ -2907,9 +2974,12 @@
       b.setAttribute('aria-disabled', 'true');
       const cost = document.createElement('span');
       cost.className = 'cost';
-      cost.innerHTML = LOCK_SVG + ' ' + (item.challenge ? 'Challenge' : item.unlock);
+      const short = runsShort(item);
+      cost.innerHTML = (canBuy(item) ? COIN_SVG : LOCK_SVG) + ' ' + (item.challenge ? 'Challenge' : short ? `${short} run${short === 1 ? '' : 's'}` : item.price);
       b.append(cost);
-      b.setAttribute('aria-label', item.challenge ? `${item.name}, locked, needs a challenge` : `${item.name}, locked, needs ${item.unlock} coins`);
+      if (canBuy(item)) b.classList.add('buyable');
+      b.setAttribute('aria-label', item.challenge ? `${item.name}, locked, needs a challenge`
+        : short ? `${item.name}, locked, needs ${short} more runs then ${item.price} coins` : `${item.name}, costs ${item.price} coins`);
     } else {
       b.setAttribute('aria-pressed', String(selected));
     }
@@ -2917,7 +2987,7 @@
       e.stopPropagation();
       if (open) { clearTryOn(); $('lockMsg').textContent = ''; onPick(); return; }
       if (tryChange) setTryOn({ change: tryChange }, b);
-      lockedNote(item);
+      lockedNote(item, onPick);
     });
     return b;
   }
@@ -2977,11 +3047,16 @@
     } else if (currentTab === 'trail') {
       const mk = tr => chip(`trail-${hero.id}-${tr.id}`, tr, tr.id === st.tr, () => { setLook({ tr: tr.id }); resetPreviewTrail(); },
         miniCanvas(40, 16, cx => trailSample(cx, tr.id, 40, 16)), { tr: tr.id });
-      kids.push(...sections('trail', [...hero.sigTrails.map(x => Object.assign({ sig: true }, x)), ...TRAILS], mk));
+      const scrollBox = document.createElement('div');
+      scrollBox.className = 'chscroll';
+      scrollBox.append(...sections('trail', [...hero.sigTrails.map(x => Object.assign({ sig: true }, x)), ...TRAILS], mk));
+      kids.push(scrollBox);
     } else if (currentTab === 'coins') {
       const mk = co => chip(`coin-${hero.id}-${co.id}`, co, co.id === st.c, () => setLook({ c: co.id }),
         miniCanvas(18, 18, cx => { cx.translate(9, 9); drawCoinItem(cx, co.id, resolveCoin(co.id).base === 'medalcoin' ? 5.5 : 7.5); }, 'coin'), { c: co.id });
-      kids.push(...sections('coins', [...[hero.coin, ...hero.coins].map(x => Object.assign({ sig: true }, x)), ...COINS], mk));
+      const scrollBox = document.createElement('div');
+      scrollBox.className = 'chscroll';
+      scrollBox.append(...sections('coins', [...[hero.coin, ...hero.coins].map(x => Object.assign({ sig: true }, x)), ...COINS], mk));
       if (st.c === 'flag') {
         const row = document.createElement('div');
         row.className = 'flagrow';
@@ -3005,18 +3080,21 @@
         row.append(lab, sel);
         kids.push(row);
       }
+      kids.push(scrollBox);
     } else if (currentTab === 'places') {
       const scrollBox = document.createElement('div');
       scrollBox.className = 'chscroll';
       // Same split as the other tabs: yours first, then folded sections by how you get them.
       const locked = THEMES.filter(x => !themeOpen(x));
-      const price = x => x.kind === 'bundle' ? x.coinPrice : x.unlock;
-      const coinBuy = locked.filter(x => x.kind === 'coins' || (x.kind === 'bundle' && !purchasesAvailable())).sort((a, b) => price(a) - price(b));
+      const coinBuy = locked.filter(x => x.kind === 'coins' || (x.kind === 'bundle' && !purchasesAvailable())).sort((a, b) => a.price - b.price);
       const wins = locked.filter(x => x.kind === 'challenge');
       const worlds = purchasesAvailable() ? locked.filter(x => x.kind === 'bundle').sort((a, b) => (b.hero === hero.id) - (a.hero === hero.id)) : [];
       const later = locked.filter(x => x.kind === 'season');
       scrollBox.append(group(`Yours (${THEMES.length - locked.length})`, THEMES.filter(themeOpen).map(placeCard), 'chcol'));
-      if (coinBuy.length) scrollBox.append(fold('places-coins', `Earn with coins (${coinBuy.length})`, `Next: ${coinBuy[0].name}, ${bank}/${price(coinBuy[0])}`, coinBuy.map(placeCard), 'chcol'));
+      if (coinBuy.length) {
+        const ready = coinBuy.filter(x => wallet >= x.price).length;
+        scrollBox.append(fold('places-coins', `Buy with coins (${coinBuy.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${coinBuy[0].price}`, coinBuy.map(placeCard), 'chcol'));
+      }
       if (wins.length) scrollBox.append(fold('places-wins', `Win in challenges (${wins.length})`, 'Preview any of them', wins.map(placeCard), 'chcol'));
       if (worlds.length) scrollBox.append(fold('places-worlds', `Character worlds (${worlds.length})`, `${BUNDLE_PRICE} each`, worlds.map(placeCard), 'chcol'));
       if (later.length) scrollBox.append(fold('places-later', `Limited time (${later.length})`, 'Come back in season', later.map(placeCard), 'chcol'));
@@ -3104,16 +3182,16 @@
     st.className = 'ch-state';
     st.textContent = using ? 'In use'
       : open ? (T.kind === 'season' && !collected.has(T.id) ? 'Limited time' : 'Unlocked')
-      : T.kind === 'bundle' ? (purchasesAvailable() ? BUNDLE_PRICE : `${T.coinPrice} coins`)
-      : T.kind === 'coins' ? `${T.unlock} coins`
+      : T.kind === 'bundle' ? (purchasesAvailable() ? BUNDLE_PRICE : `${T.price} coins`)
+      : T.kind === 'coins' ? `${T.price} coins`
       : T.kind === 'challenge' ? 'Challenge'
       : `Back in ${MONTHS[T.months[0] - 1]}`;
     head.append(name, st);
     const p = document.createElement('p');
     let note = T.desc;
     if (T.kind === 'bundle' && purchasesAvailable()) note += ` ${owner.name}’s world pack: this place plus all of ${owner.name}’s coin unlocks.`;
-    if (T.kind === 'bundle' && !purchasesAvailable() && !open) note += ` ${owner.name}’s world. Collect ${T.coinPrice} coins in total. You have ${bank}.`;
-    if (T.kind === 'coins' && !open) note += ` Collect ${T.unlock} coins in total. You have ${bank}.`;
+    if (T.kind === 'bundle' && !purchasesAvailable() && !open) note += ` ${owner.name}’s world. Costs ${T.price} coins. You have ${wallet}.`;
+    if (T.kind === 'coins' && !open) note += ` Costs ${T.price} coins. You have ${wallet}.`;
     if (T.kind === 'challenge' && !open) {
       const ch = CHALLENGES.find(x => x.id === T.challenge);
       if (ch) note += ` Complete the ${ch.name} challenge: ${ch.desc}`;
@@ -3139,6 +3217,16 @@
     if (!open) btn('Preview', 'ghost', () => {
       setTryOn({ theme: T.id }, d);
       $('lockMsg').textContent = `Previewing ${T.name}. ${st.textContent === 'Challenge' ? 'Win its challenge to unlock it.' : 'Locked: ' + st.textContent + '.'}`;
+    });
+    if (!open && T.key && !(T.kind === 'bundle' && purchasesAvailable()) && wallet >= T.price) btn(`Buy for ${T.price}`, 'go', () => {
+      wallet -= T.price;
+      bought.add(T.key);
+      saveWallet();
+      track('buy', { item: T.key, price: T.price });
+      tone(660, 0.08, 'square', 0.05); tone(990, 0.12, 'square', 0.05, null, 0.08);
+      clearTryOn();
+      setTheme(T.id);
+      $('lockMsg').textContent = `${T.name} is yours. ${wallet} coins left.`;
     });
     if (T.kind === 'bundle' && !open) {
       if (purchasesAvailable()) btn(`Buy ${BUNDLE_PRICE}`, 'go', () => buyBundle(T.hero));
@@ -3251,8 +3339,8 @@
       const ul = $('unlocks');
       ul.replaceChildren();
       const head = document.createElement('strong');
-      head.textContent = fresh.length === 1 ? 'New unlock' : `${fresh.length} new unlocks`;
-      ul.append(head, document.createTextNode(fresh.join(', ')));
+      head.textContent = fresh.length === 1 ? 'Ready to buy' : `${fresh.length} items ready to buy`;
+      ul.append(head, document.createTextNode(fresh.slice(0, 3).join(', ') + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : '') + '. Open the Locker to spend your coins.'));
       ul.hidden = false;
       tone(880, 0.1, 'square', 0.05);
       tone(1320, 0.2, 'square', 0.05, null, 0.1);
@@ -3332,73 +3420,57 @@
     return d;
   }
 
-  // Thresholds for one character's items (owner) or for the account-wide items (no owner).
-  function unlockSteps(owner) {
-    if (owner && owned.has('bundle-' + owner)) return [];
-    return UNLOCKABLES.filter(x => (owner ? x.owner === owner : !x.owner)).map(x => x.unlock);
-  }
-  function nextUnlock(owner) {
-    const have = owner ? heroCoins(owner) : bank;
-    const ahead = unlockSteps(owner).filter(n => n > have);
-    return ahead.length ? Math.min(...ahead) : null;
-  }
-
-  // Coins count twice: toward the lifetime total (unlocks for everyone) and toward the character
-  // who collected them (that character's own outfits, extras, trails and coin).
-  // Returns the names of anything this unlocked.
+  // Coins go into one shared wallet; lifetime and per-character totals are still kept for stats.
+  // Returns the names of items that this made affordable (and that the current character may buy).
   function addCoins(n) {
-    const beforeTotal = bank, beforeHero = heroCoins(hero.id);
+    const before = wallet;
     bank += n;
-    heroBank[hero.id] = beforeHero + n;
+    heroBank[hero.id] = heroCoins(hero.id) + n;
+    wallet += n;
     try {
       localStorage.setItem('jetpackersBank', String(bank));
       localStorage.setItem('jetpackersHeroBank', JSON.stringify(heroBank));
     } catch (e) {}
-    return UNLOCKABLES.filter(x => x.owner
-      ? x.owner === hero.id && !owned.has('bundle-' + x.owner) && x.unlock > beforeHero && x.unlock <= heroCoins(hero.id)
-      : x.unlock > beforeTotal && x.unlock <= bank).map(x => x.label);
+    saveWallet();
+    return UNLOCKABLES.filter(u => (!u.owner || u.owner === hero.id) && !(u.item.isPlace ? themeOpen(u.item) : isOpen(u.item))
+      && u.item.price > before && u.item.price <= wallet && !(u.item.runs && runsShort(u.item))).map(u => u.label);
+  }
+  // The cheapest thing not yet bought that this character could buy, for the coin lines.
+  function nextBuy() {
+    const left = UNLOCKABLES.filter(u => (!u.owner || u.owner === hero.id) && !(u.item.isPlace ? themeOpen(u.item) : isOpen(u.item)));
+    return left.length ? left.reduce((a, b) => (b.item.price < a.item.price ? b : a)) : null;
   }
 
   function coinSummary(earned) {
-    const nh = nextUnlock(hero.id), na = nextUnlock();
-    return `+${earned} coin${earned === 1 ? '' : 's'} this run. ` +
-      `${hero.name}: ${heroCoins(hero.id)}` + (nh ? ` (next ${hero.name} unlock at ${nh})` : '') + '. ' +
-      `Lifetime: ${bank}` + (na ? ` (next unlock at ${na})` : '') + '.';
+    const nx = nextBuy();
+    return `+${earned} coin${earned === 1 ? '' : 's'} this run. Wallet: ${wallet}.` +
+      (nx && nx.item.price > wallet ? ` ${nx.item.price - wallet} more for ${nx.label}.` : ' Spend them in the Locker.');
   }
 
   function renderBank() {
     document.querySelectorAll('.bankline').forEach(renderBankInto);
   }
-  function bankRow(label, have, steps) {
+  function renderBankInto(el) {
     const row = document.createElement('div');
     row.className = 'bankrow';
     const txt = document.createElement('span');
-    txt.innerHTML = `${label} <b>${have}</b>`;
+    txt.innerHTML = `Wallet <b>${wallet}</b> coins`;
     row.append(txt);
-    const ahead = steps.filter(n => n > have);
-    if (ahead.length) {
-      const next = Math.min(...ahead);
-      const prev = Math.max(0, ...steps.filter(n => n <= have));
+    const nx = nextBuy();
+    if (nx && nx.item.price > wallet) {
       const meter = document.createElement('span');
       meter.className = 'meter';
       const fill = document.createElement('i');
-      fill.style.width = `${Math.round(((have - prev) / (next - prev)) * 100)}%`;
+      fill.style.width = `${Math.round((wallet / nx.item.price) * 100)}%`;
       meter.append(fill);
-      const nx = document.createElement('span');
-      nx.textContent = `Next at ${next}`;
-      row.append(meter, nx);
-    } else {
-      const done = document.createElement('span');
-      done.textContent = 'All unlocked';
-      row.append(done);
+      const t = document.createElement('span');
+      t.textContent = `Next: ${nx.item.price}`;
+      row.append(meter, t);
     }
-    return row;
-  }
-  function renderBankInto(el) {
-    el.replaceChildren(
-      bankRow(`${hero.name}’s coins`, heroCoins(hero.id), unlockSteps(hero.id)),
-      bankRow('Lifetime coins', bank, unlockSteps())
-    );
+    const runs = document.createElement('div');
+    runs.className = 'bankrow';
+    runs.innerHTML = `<span>${hero.name}’s runs <b>${runsAs(hero.id)}</b></span>`;
+    el.replaceChildren(row, runs);
   }
 
   syncPicks();
@@ -3738,8 +3810,8 @@
     if (fresh.length) {
       ul.replaceChildren();
       const head = document.createElement('strong');
-      head.textContent = fresh.length === 1 ? 'New unlock' : `${fresh.length} new unlocks`;
-      ul.append(head, document.createTextNode(fresh.join(', ')));
+      head.textContent = fresh.length === 1 ? 'Ready to buy' : `${fresh.length} items ready to buy`;
+      ul.append(head, document.createTextNode(fresh.slice(0, 3).join(', ') + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : '') + '. Open the Locker to spend your coins.'));
       ul.hidden = false;
       tone(660, 0.1, 'square', 0.05, null, 0.7);
       tone(880, 0.1, 'square', 0.05, null, 0.8);
