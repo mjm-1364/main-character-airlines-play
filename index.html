@@ -341,13 +341,13 @@
   .rarity-key { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 0.68rem; font-weight: 800; color: var(--muted); padding: 0 10px 6px; }
   .rarity-key b { font-weight: 900; }
   .rarity-key .rare { color: #3c7fd1; } .rarity-key .epic { color: #8a4fd8; } .rarity-key .legendary { color: #b08300; }
-  /* Colour families: one chip per item, its colours open underneath */
-  .family { display: inline-block; }
-  .family[open] { display: block; width: 100%; background: #f6f1e6; border-radius: 10px; padding-bottom: 6px; }
-  .family > summary { list-style: none; }
-  .family > summary::-webkit-details-marker { display: none; }
-  .family[open] > summary { margin: 4px; }
-  .family > .chips { padding: 2px 8px 0 18px; }
+  /* Colour families: one chip per item; its colours are picked from a dropdown under the list */
+  .famchip.locked { border-style: dashed; }
+  .famchip.locked.buyable { border-style: solid; }
+  .colorpick { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px 4px 0; color: var(--ink); vertical-align: middle; }
+  .colorpick label { font-weight: 900; font-size: 0.75rem; }
+  .colorpick select { font: inherit; font-weight: 800; font-size: 0.8rem; padding: 3px 6px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); max-width: 230px; }
+  .colorpick select:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
   .famchip .famn { font-size: 0.66rem; font-weight: 900; color: var(--muted); }
   .famchip.famsel { background: var(--gold); box-shadow: 2px 2px 0 var(--ink); }
   .famchip.famsel .famn { color: var(--ink); }
@@ -403,7 +403,8 @@
     color: var(--ink);
     max-width: 100%;
   }
-  .lockmsg { font-size: 0.8rem; font-weight: 800; color: var(--red); min-height: 3.9em; margin: 0; }
+  /* Fixed height: the Locker never grows when a message, colour dropdown or buttons appear */
+  .lockmsg { font-size: 0.8rem; font-weight: 800; color: var(--red); height: 6.6em; overflow-y: auto; margin: 0; }
   .rank {
     font-family: var(--font-display);
     font-size: 1.05rem;
@@ -485,9 +486,9 @@
     .home #preview { width: 230px; }
     #lockerCard #preview { width: 230px; }
     /* The item list shrinks on short phones so the whole Locker fits */
-    #panel > .chscroll { height: clamp(140px, calc(100dvh - 690px), 260px); }
+    #panel > .chscroll { height: clamp(140px, calc(100dvh - 705px), 260px); }
     /* Room for a two-line message plus its buttons, so the Locker keeps one size */
-    .lockmsg { min-height: 5.6em; }
+    .lockmsg { height: 7em; }
     .deal { padding: 4px 8px; font-size: 0.72rem; gap: 2px 6px; }
     .deal button { padding: 2px 10px; font-size: 0.72rem; }
   }
@@ -496,7 +497,7 @@
   }
   /* Short desktop frames: the item list gives up room for the second row of tabs */
   @media (max-height: 640px) and (min-width: 481px) {
-    #panel > .chscroll { height: clamp(120px, calc(100dvh - 320px), 260px); }
+    #panel > .chscroll { height: clamp(100px, calc(100dvh - 355px), 260px); }
   }
   /* Short phones: one-line wallet, smaller preview, no names under the switcher tiles */
   @media (max-width: 480px) and (max-height: 700px) {
@@ -507,7 +508,7 @@
     .tab { padding: 4px 4px; }
     .lockmsg { font-size: 0.74rem; }
     .lockercrew .pick strong { display: none; }
-    #panel > .chscroll { height: clamp(110px, calc(100dvh - 557px), 260px); }
+    #panel > .chscroll { height: clamp(90px, calc(100dvh - 600px), 260px); }
   }
   /* Short screens (small laptops, game-site frames, landscape phones): tighten the home screen */
   @media (max-height: 780px) {
@@ -3182,6 +3183,7 @@
       hero = p;
       heroLook = lookOf(hero);
       clearTryOn();
+      activeFam = null;
       preloadHero(hero);
       try { localStorage.setItem('jetpackersHero', p.id); } catch (err) {}
       resetPreviewTrail();
@@ -3208,6 +3210,7 @@
       document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === tb)));
       $('lockMsg').textContent = '';
       clearTryOn();
+      activeFam = null;
       renderCustom();
     });
   });
@@ -3304,6 +3307,7 @@
         if (onBuy) onBuy(); else renderCustom();
         renderBank();
         msg.textContent = `${item.name} is yours. ${wallet} coins left.`;
+        familyPicker();
       });
       msg.append(' ', b);
     } else {
@@ -3360,41 +3364,97 @@
   const STYLE_RE = new RegExp(`^(?:(?:${STYLE_NAMES}) )?(.*?)(?: \\((?:${STYLE_NAMES})\\))?$`);
   const famKey = it => it.fam || it.base || it.kind || it.id || it.name;
   const famName = it => it.fam || it.name.replace(STYLE_RE, '$1');
-  function grouped(tabKey, items, makeChip, showPrice) {
-    const fams = new Map();
-    items.forEach(it => { const k = famKey(it); if (!fams.has(k)) fams.set(k, []); fams.get(k).push(it); });
-    const out = [];
-    for (const [k, list] of fams) {
-      const chips = list.map(makeChip);
-      if (list.length < 2) { out.push(chips[0]); continue; }
-      const d = document.createElement('details');
-      d.className = 'family';
-      const fk = `fam-${tabKey}-${k}`;
-      d.open = openFolds.has(fk);
-      d.addEventListener('toggle', () => { if (d.open) openFolds.add(fk); else openFolds.delete(fk); });
-      const sum = document.createElement('summary');
-      sum.className = 'chip famchip' + (chips.some(c => c.getAttribute('aria-pressed') === 'true') ? ' famsel' : '');
-      const art = chips[0].firstChild;
-      if (art && art.tagName === 'CANVAS') {
-        const c2 = document.createElement('canvas');
-        c2.width = art.width; c2.height = art.height; c2.className = art.className;
-        c2.getContext('2d').drawImage(art, 0, 0);
-        sum.append(c2);
-      } else if (art && art.classList && art.classList.contains('dot')) {
-        sum.append(art.cloneNode(true));
-      }
-      sum.append(document.createTextNode(famName(list[0])));
-      const n = document.createElement('span');
-      n.className = 'famn';
-      n.textContent = showPrice ? `${list.length} colors, from ${Math.min(...list.map(priceOf))}` : `${list.length} colors`;
-      sum.append(n);
-      const box = document.createElement('div');
-      box.className = 'chips';
-      box.append(...chips);
-      d.append(sum, box);
-      out.push(d);
+  // Each family shows as one chip. Tapping it wears (or previews) one colour and puts a colour
+  // dropdown in the message line under the list, like the country picker for the flag coin.
+  // The list itself never grows, so the Locker keeps its size.
+  const famRegistry = new Map(); // family key -> { list, makeChip } for the tab on screen
+  let activeFam = null, famDriving = false; // { tab, key, idx } for the family with the dropdown open
+  const STYLE_SUFFIX = new RegExp(`\\((${STYLE_NAMES})\\)$`), STYLE_PREFIX = new RegExp(`^(${STYLE_NAMES}) `);
+  const styleOf = it => { const m = it.name.match(STYLE_SUFFIX) || it.name.match(STYLE_PREFIX); return m ? m[1] : 'Original'; };
+  const RARITY_ORDER = ['', 'common', 'rare', 'epic', 'legendary'];
+  function famStatus(it, wearing) {
+    if (isOpen(it)) return wearing ? 'wearing' : 'yours';
+    if (it.challenge) return 'win in a challenge';
+    const short = runsShort(it);
+    if (short) return `${short} more run${short === 1 ? '' : 's'}`;
+    return `${priceOf(it)} coins${isDeal(it) ? ", today's deal" : ''}`;
+  }
+  function familyChip(tabKey, k, list, makeChip, showPrice) {
+    famRegistry.set(k, { list, makeChip });
+    const chips = list.map(makeChip);
+    const wearing = chips.findIndex(c => c.getAttribute('aria-pressed') === 'true');
+    const firstOwned = list.findIndex(isOpen);
+    const locked = list.filter(it => !isOpen(it) && !it.challenge);
+    const cheapest = locked.length ? list.indexOf(locked.reduce((a, b) => (priceOf(b) < priceOf(a) ? b : a))) : 0;
+    const startIdx = wearing >= 0 ? wearing : firstOwned >= 0 ? firstOwned : cheapest;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = `fam-${tabKey}-${k}`;
+    const active = activeFam && activeFam.tab === currentTab && activeFam.key === k;
+    b.className = 'chip famchip' + (wearing >= 0 ? ' famsel' : '') + (active ? ' trying' : '');
+    if (firstOwned < 0) b.classList.add('locked');
+    if (list.some(it => !isOpen(it) && canBuy(it))) b.classList.add('buyable');
+    if (list.some(it => !isOpen(it) && isDeal(it))) b.classList.add('dealchip');
+    const tier = list.map(rarityOf).reduce((a, t) => (RARITY_ORDER.indexOf(t) > RARITY_ORDER.indexOf(a) ? t : a), '');
+    if (tier && tier !== 'common') b.classList.add('r-' + tier);
+    const art = chips[startIdx].firstChild;
+    if (art && art.tagName === 'CANVAS') {
+      const c2 = document.createElement('canvas');
+      c2.width = art.width; c2.height = art.height; c2.className = art.className;
+      c2.getContext('2d').drawImage(art, 0, 0);
+      b.append(c2);
+    } else if (art && art.classList && art.classList.contains('dot')) {
+      b.append(art.cloneNode(true));
     }
-    return out;
+    b.append(document.createTextNode(famName(list[0])));
+    const n = document.createElement('span');
+    n.className = 'famn';
+    n.textContent = showPrice && locked.length ? `${list.length} colors, from ${priceOf(list[cheapest])}` : `${list.length} colors`;
+    b.append(n);
+    b.setAttribute('aria-label', `${famName(list[0])}, ${list.length} colors. Opens a color picker.`);
+    b.addEventListener('click', e => {
+      e.stopPropagation();
+      openFamily(k, active ? activeFam.idx : startIdx);
+    });
+    return b;
+  }
+  // Wears or previews colour idx of a family, then shows the dropdown for that family.
+  function openFamily(k, idx) {
+    const entry = famRegistry.get(k);
+    if (!entry) return;
+    activeFam = { tab: currentTab, key: k, idx };
+    famDriving = true;
+    try { entry.makeChip(entry.list[idx]).click(); } finally { famDriving = false; }
+    const fc = $(`fam-${currentTab}-${k}`);
+    if (fc) fc.classList.add('trying');
+    familyPicker();
+  }
+  function familyPicker() {
+    if (!activeFam || activeFam.tab !== currentTab) return;
+    const entry = famRegistry.get(activeFam.key);
+    if (!entry) return;
+    const msg = $('lockMsg');
+    const old = msg.querySelector('.colorpick');
+    if (old) old.remove();
+    const wrap = document.createElement('span');
+    wrap.className = 'colorpick';
+    const lab = document.createElement('label');
+    lab.htmlFor = 'colorSelect';
+    lab.textContent = `${famName(entry.list[0])} color`;
+    const sel = document.createElement('select');
+    sel.id = 'colorSelect';
+    entry.list.forEach((it, i) => {
+      const wearing = entry.makeChip(it).getAttribute('aria-pressed') === 'true';
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = `${styleOf(it)}: ${famStatus(it, wearing)}`;
+      if (i === activeFam.idx) o.selected = true;
+      sel.append(o);
+    });
+    sel.addEventListener('click', e => e.stopPropagation());
+    sel.addEventListener('change', e => { e.stopPropagation(); openFamily(activeFam.key, Number(sel.value)); });
+    wrap.append(lab, sel);
+    msg.prepend(wrap);
   }
   function rarityKey() {
     const k = document.createElement('div');
@@ -3403,18 +3463,25 @@
     return k;
   }
   // Splits a tab's items into: yours, buy with coins (cheapest first), win in challenges.
+  // A family goes in "Yours" once you own any colour of it; its other colours are in its dropdown.
   function sections(key, items, makeChip) {
+    famRegistry.clear();
+    const fams = new Map();
+    items.forEach(it => { const k = famKey(it); if (!fams.has(k)) fams.set(k, []); fams.get(k).push(it); });
     const yours = [], coins = [], wins = [];
-    items.forEach(it => (isOpen(it) ? yours : it.challenge ? wins : coins).push(it));
-    coins.sort((a, b) => priceOf(a) - priceOf(b));
-    const out = [fold(`${key}-yours`, `Yours (${yours.length})`, 'Tap to wear', grouped(key, yours, makeChip))];
+    for (const [k, list] of fams) (list.some(isOpen) ? yours : list.some(it => !it.challenge) ? coins : wins).push([k, list]);
+    const minPrice = list => Math.min(...list.filter(it => !isOpen(it) && !it.challenge).map(priceOf));
+    coins.sort((a, b) => minPrice(a[1]) - minPrice(b[1]));
+    const draw = (groups, showPrice) => groups.map(([k, list]) => (list.length < 2 ? makeChip(list[0]) : familyChip(key, k, list, makeChip, showPrice)));
+    const hasColors = groups => groups.some(([, list]) => list.length > 1);
+    const out = [fold(`${key}-yours`, `Yours (${yours.length})`, hasColors(yours) ? 'Tap to wear, then pick a color' : 'Tap to wear', draw(yours))];
     if (coins.length) {
-      const ready = coins.filter(canBuy).length;
-      const f = fold(`${key}-coins`, `Buy with coins (${coins.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${priceOf(coins[0])}`, grouped(key, coins, makeChip, true));
+      const ready = items.filter(it => !isOpen(it) && canBuy(it)).length;
+      const f = fold(`${key}-coins`, `Buy with coins (${coins.length})`, ready ? `${ready} you can buy now` : `Cheapest: ${minPrice(coins[0][1])}`, draw(coins, true));
       f.querySelector('summary').after(rarityKey());
       out.push(f);
     }
-    if (wins.length) out.push(fold(`${key}-wins`, `Win in challenges (${wins.length})`, 'Tap one to preview it', grouped(key, wins, makeChip)));
+    if (wins.length) out.push(fold(`${key}-wins`, `Win in challenges (${wins.length})`, 'Tap one to preview it', draw(wins)));
     return out;
   }
 
@@ -3454,6 +3521,7 @@
     }
     b.addEventListener('click', e => {
       e.stopPropagation();
+      if (!famDriving) activeFam = null;
       if (open) { clearTryOn(); $('lockMsg').textContent = ''; onPick(); return; }
       if (tryChange) setTryOn({ change: tryChange }, b);
       lockedNote(item, onPick, tryChange);
@@ -3483,11 +3551,19 @@
         currentTab = tab;
         document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === tab)));
         openFolds.add(`${tab}-coins`);
-        openFolds.add(`fam-${tab}-${famKey(it)}`);
+        openFolds.add(`${tab}-yours`);
         clearTryOn();
+        activeFam = null;
         renderCustom();
-        const c = $(`${tab === 'trail' ? 'trail' : 'coin'}-${hero.id}-${it.id}`);
-        if (c) { c.scrollIntoView({ block: 'nearest' }); c.click(); }
+        const fk = famKey(it), entry = famRegistry.get(fk);
+        if (entry && entry.list.length > 1) {
+          const fc = $(`fam-${tab}-${fk}`);
+          if (fc) fc.scrollIntoView({ block: 'nearest' });
+          openFamily(fk, entry.list.findIndex(x => x.key === it.key));
+        } else {
+          const c = $(`${tab === 'trail' ? 'trail' : 'coin'}-${hero.id}-${it.id}`);
+          if (c) { c.scrollIntoView({ block: 'nearest' }); c.click(); }
+        }
       });
       box.replaceChildren(title, txt, b);
     }
@@ -3638,6 +3714,7 @@
     panel.replaceChildren(...kids);
     renderBank();
     renderDeal();
+    familyPicker();
     renderTrackingLine();
   }
 
@@ -5241,7 +5318,7 @@
   }
   $('switchBtn').addEventListener('click', showLocker);
   $('lockerBtn').addEventListener('click', e => { e.stopPropagation(); showLocker(); });
-  $('lockerDone').addEventListener('click', e => { e.stopPropagation(); clearTryOn(); $('lockMsg').textContent = ''; showHome(); });
+  $('lockerDone').addEventListener('click', e => { e.stopPropagation(); clearTryOn(); activeFam = null; $('lockMsg').textContent = ''; showHome(); });
 
   // ---------- Settings, pause, credits and privacy ----------
   // The email address players can write to about privacy.
