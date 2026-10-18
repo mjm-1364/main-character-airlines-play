@@ -270,6 +270,8 @@
     justify-content: center;
   }
   .bank b { color: var(--red); }
+  .bank { flex-direction: column; gap: 4px; }
+  .bankrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
   .meter { width: 120px; height: 8px; border: 2px solid var(--ink); border-radius: 999px; background: #fff; overflow: hidden; }
   .meter i { display: block; height: 100%; background: var(--gold); }
   .tabs { display: flex; gap: 4px; border-bottom: 2.5px solid var(--ink); }
@@ -838,13 +840,14 @@
     return '';
   }
 
-  // Every lockable item, for the "new unlocks" list at game over.
+  // Every lockable item, for the "new unlocks" list at game over. Items with an owner unlock from the
+  // coins collected while playing that character; the rest unlock from the lifetime total.
   const UNLOCKABLES = [];
   for (const c of CREW) {
-    c.outfits.forEach(o => o.unlock && UNLOCKABLES.push({ unlock: o.unlock, label: `${o.name} outfit (${c.name})` }));
-    c.accs.forEach(a => a.unlock && UNLOCKABLES.push({ unlock: a.unlock, label: `${a.name} (${c.name})` }));
-    c.sigTrails.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, label: `${tr.name} trail (${c.name})` }));
-    UNLOCKABLES.push({ unlock: c.coin.unlock, label: `${c.coin.name} coin (${c.name})` });
+    c.outfits.forEach(o => o.unlock && UNLOCKABLES.push({ unlock: o.unlock, owner: c.id, label: `${o.name} outfit (${c.name})` }));
+    c.accs.forEach(a => a.unlock && UNLOCKABLES.push({ unlock: a.unlock, owner: c.id, label: `${a.name} (${c.name})` }));
+    c.sigTrails.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, owner: c.id, label: `${tr.name} trail (${c.name})` }));
+    UNLOCKABLES.push({ unlock: c.coin.unlock, owner: c.id, label: `${c.coin.name} coin (${c.name})` });
   }
   TRAILS.forEach(tr => tr.unlock && UNLOCKABLES.push({ unlock: tr.unlock, label: `${tr.name} trail` }));
   COINS.forEach(co => co.unlock && UNLOCKABLES.push({ unlock: co.unlock, label: `${co.name} coin` }));
@@ -858,6 +861,10 @@
   try { looks = JSON.parse(localStorage.getItem('jetpackersLooks') || '{}') || {}; } catch (e) { looks = {}; }
   try { const f = localStorage.getItem('jetpackersFlag'); if (FLAGS.some(x => x[0] === f)) flagId = f; } catch (e) {}
   try { bank = parseInt(localStorage.getItem('jetpackersBank') || '0', 10) || 0; } catch (e) {}
+  // Coins collected per character, which unlock that character's own items.
+  let heroBank = {};
+  try { heroBank = JSON.parse(localStorage.getItem('jetpackersHeroBank') || '{}') || {}; } catch (e) { heroBank = {}; }
+  const heroCoins = id => heroBank[id] || 0;
   let doneCh = new Set(), tour = new Set(), voiceMode = 'real';
   try { doneCh = new Set(JSON.parse(localStorage.getItem('jetpackersChallenges') || '[]')); } catch (e) {}
   try { tour = new Set(JSON.parse(localStorage.getItem('jetpackersTour') || '[]')); } catch (e) {}
@@ -872,7 +879,7 @@
   const isOpen = item => {
     if (item.challenge) return doneCh.has(item.challenge);
     if (item.owner && owned.has('bundle-' + item.owner)) return true;
-    return bank >= (item.unlock || 0);
+    return (item.owner ? heroCoins(item.owner) : bank) >= (item.unlock || 0);
   };
 
   // ---------- Places (themes) ----------
@@ -2495,8 +2502,11 @@
     if (item.challenge) {
       const ch = CHALLENGES.find(x => x.id === item.challenge);
       $('lockMsg').textContent = `Complete the ${ch.name} challenge to unlock ${item.name}. ${ch.desc}`;
+    } else if (item.owner) {
+      const who = CREW.find(c => c.id === item.owner).name;
+      $('lockMsg').textContent = `Collect ${item.unlock} coins while playing as ${who} to unlock ${item.name}. ${who} has ${heroCoins(item.owner)}.`;
     } else {
-      $('lockMsg').textContent = `Collect ${item.unlock} coins in total to unlock ${item.name}. You have ${bank}.`;
+      $('lockMsg').textContent = `Collect ${item.unlock} coins in total, with any character, to unlock ${item.name}. You have ${bank}.`;
     }
     tone(200, 0.08, 'square', 0.03);
   }
@@ -2811,13 +2821,9 @@
     const ok = await watchAd('double_coins', 'Doubling your coins in');
     if (!ok) return;
     coinsDoubled = true;
-    const before = bank;
-    bank += runCoins;
-    try { localStorage.setItem('jetpackersBank', String(bank)); } catch (e) {}
+    const fresh = addCoins(runCoins);
     track('coins_doubled', { coins: runCoins });
-    const next = nextUnlock();
-    $('coinLine').textContent = `+${runCoins * 2} coins this run (doubled). ${bank} lifetime.` + (next ? ` Next unlock at ${next}.` : '');
-    const fresh = UNLOCKABLES.filter(x => x.unlock > before && x.unlock <= bank).map(x => x.label);
+    $('coinLine').textContent = coinSummary(runCoins * 2).replace(' this run.', ' this run (doubled).');
     if (fresh.length) {
       const ul = $('unlocks');
       ul.replaceChildren();
@@ -2885,34 +2891,73 @@
     return d;
   }
 
-  function nextUnlock() {
-    const ahead = UNLOCKABLES.map(x => x.unlock).filter(n => n > bank);
+  // Thresholds for one character's items (owner) or for the account-wide items (no owner).
+  function unlockSteps(owner) {
+    if (owner && owned.has('bundle-' + owner)) return [];
+    return UNLOCKABLES.filter(x => (owner ? x.owner === owner : !x.owner)).map(x => x.unlock);
+  }
+  function nextUnlock(owner) {
+    const have = owner ? heroCoins(owner) : bank;
+    const ahead = unlockSteps(owner).filter(n => n > have);
     return ahead.length ? Math.min(...ahead) : null;
   }
+
+  // Coins count twice: toward the lifetime total (unlocks for everyone) and toward the character
+  // who collected them (that character's own outfits, extras, trails and coin).
+  // Returns the names of anything this unlocked.
+  function addCoins(n) {
+    const beforeTotal = bank, beforeHero = heroCoins(hero.id);
+    bank += n;
+    heroBank[hero.id] = beforeHero + n;
+    try {
+      localStorage.setItem('jetpackersBank', String(bank));
+      localStorage.setItem('jetpackersHeroBank', JSON.stringify(heroBank));
+    } catch (e) {}
+    return UNLOCKABLES.filter(x => x.owner
+      ? x.owner === hero.id && !owned.has('bundle-' + x.owner) && x.unlock > beforeHero && x.unlock <= heroCoins(hero.id)
+      : x.unlock > beforeTotal && x.unlock <= bank).map(x => x.label);
+  }
+
+  function coinSummary(earned) {
+    const nh = nextUnlock(hero.id), na = nextUnlock();
+    return `+${earned} coin${earned === 1 ? '' : 's'} this run. ` +
+      `${hero.name}: ${heroCoins(hero.id)}` + (nh ? ` (next ${hero.name} unlock at ${nh})` : '') + '. ' +
+      `Lifetime: ${bank}` + (na ? ` (next unlock at ${na})` : '') + '.';
+  }
+
   function renderBank() {
     document.querySelectorAll('.bankline').forEach(renderBankInto);
   }
-  function renderBankInto(el) {
-    const next = nextUnlock();
-    const prev = Math.max(0, ...UNLOCKABLES.map(x => x.unlock).filter(n => n <= bank));
-    el.replaceChildren();
+  function bankRow(label, have, steps) {
+    const row = document.createElement('div');
+    row.className = 'bankrow';
     const txt = document.createElement('span');
-    txt.innerHTML = `Lifetime coins <b>${bank}</b>`;
-    el.append(txt);
-    if (next) {
+    txt.innerHTML = `${label} <b>${have}</b>`;
+    row.append(txt);
+    const ahead = steps.filter(n => n > have);
+    if (ahead.length) {
+      const next = Math.min(...ahead);
+      const prev = Math.max(0, ...steps.filter(n => n <= have));
       const meter = document.createElement('span');
       meter.className = 'meter';
       const fill = document.createElement('i');
-      fill.style.width = `${Math.round(((bank - prev) / (next - prev)) * 100)}%`;
+      fill.style.width = `${Math.round(((have - prev) / (next - prev)) * 100)}%`;
       meter.append(fill);
       const nx = document.createElement('span');
-      nx.textContent = `Next unlock at ${next}`;
-      el.append(meter, nx);
+      nx.textContent = `Next at ${next}`;
+      row.append(meter, nx);
     } else {
       const done = document.createElement('span');
-      done.textContent = 'Everything unlocked';
-      el.append(done);
+      done.textContent = 'All unlocked';
+      row.append(done);
     }
+    return row;
+  }
+  function renderBankInto(el) {
+    el.replaceChildren(
+      bankRow(`${hero.name}’s coins`, heroCoins(hero.id), unlockSteps(hero.id)),
+      bankRow('Lifetime coins', bank, unlockSteps())
+    );
   }
 
   syncPicks();
@@ -3191,11 +3236,8 @@
       try { localStorage.setItem('jetpackersBest', String(best)); } catch (e) {}
     }
     // After a "keep going" revive, only the coins collected since the last crash are new.
-    const before = bank;
-    bank += runCoins - banked;
+    const fresh = addCoins(runCoins - banked);
     banked = runCoins;
-    try { localStorage.setItem('jetpackersBank', String(bank)); } catch (e) {}
-    const fresh = UNLOCKABLES.filter(x => x.unlock > before && x.unlock <= bank).map(x => x.label);
     track('run_end', { hero: hero.id, theme: activeTheme().id, trial: !!trialTheme, continued, score, coins: runCoins, seconds: Math.round(runTime), cause: reason, challenges: runDone.length });
     if (fresh.length) track('unlock', { count: fresh.length });
     hook('gameplayStop');
@@ -3220,8 +3262,7 @@
     $('rank').textContent = rankFor(score);
     $('finalScore').textContent = score;
     $('finalBest').textContent = best;
-    const next = nextUnlock();
-    $('coinLine').textContent = `+${runCoins} coin${runCoins === 1 ? '' : 's'} this run. ${bank} lifetime.` + (next ? ` Next unlock at ${next}.` : '');
+    $('coinLine').textContent = coinSummary(runCoins);
     if (trialTheme) $('coinLine').textContent += ` Like ${activeTheme().name}? Find it in the Locker under Places.`;
     const ul = $('unlocks');
     if (fresh.length) {
