@@ -344,10 +344,9 @@
   /* Colour families: one chip per item; its colours are picked from a dropdown under the list */
   .famchip.locked { border-style: dashed; }
   .famchip.locked.buyable { border-style: solid; }
-  .colorpick { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px 4px 0; color: var(--ink); vertical-align: middle; }
-  .colorpick label { font-weight: 900; font-size: 0.75rem; }
-  .colorpick select { font: inherit; font-weight: 800; font-size: 0.8rem; padding: 3px 6px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); max-width: 230px; }
-  .colorpick select:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
+  /* The country and colour pickers stay pinned at the top of the list while it scrolls */
+  .chscroll > .flagrow { position: sticky; top: 0; z-index: 2; background: var(--paper); padding: 4px 0; }
+  .chscroll > .flagrow + .flagrow { top: 38px; }
   .famchip .famn { font-size: 0.66rem; font-weight: 900; color: var(--muted); }
   .famchip.famsel { background: var(--gold); box-shadow: 2px 2px 0 var(--ink); }
   .famchip.famsel .famn { color: var(--ink); }
@@ -3433,12 +3432,15 @@
     if (!activeFam || activeFam.tab !== currentTab) return;
     const entry = famRegistry.get(activeFam.key);
     if (!entry) return;
-    const msg = $('lockMsg');
-    const old = msg.querySelector('.colorpick');
+    // Same place and look as the country picker for the flag coin: a row at the top of the list.
+    const list = document.querySelector('#panel > .chscroll');
+    if (!list) return;
+    const old = list.querySelector('.colorrow');
     if (old) old.remove();
-    const wrap = document.createElement('span');
-    wrap.className = 'colorpick';
+    const wrap = document.createElement('div');
+    wrap.className = 'flagrow colorrow';
     const lab = document.createElement('label');
+    lab.className = 'label';
     lab.htmlFor = 'colorSelect';
     lab.textContent = `${famName(entry.list[0])} color`;
     const sel = document.createElement('select');
@@ -3454,7 +3456,9 @@
     sel.addEventListener('click', e => e.stopPropagation());
     sel.addEventListener('change', e => { e.stopPropagation(); openFamily(activeFam.key, Number(sel.value)); });
     wrap.append(lab, sel);
-    msg.prepend(wrap);
+    // Under the country picker when both show (Coins tab with the flag coin on).
+    const flag = list.querySelector('.flagrow:not(.colorrow)');
+    if (flag) flag.after(wrap); else list.prepend(wrap);
   }
   function rarityKey() {
     const k = document.createElement('div');
@@ -3521,7 +3525,11 @@
     }
     b.addEventListener('click', e => {
       e.stopPropagation();
-      if (!famDriving) activeFam = null;
+      if (!famDriving) {
+        activeFam = null;
+        const row = document.querySelector('#panel .colorrow');
+        if (row) row.remove();
+      }
       if (open) { clearTryOn(); $('lockMsg').textContent = ''; onPick(); return; }
       if (tryChange) setTryOn({ change: tryChange }, b);
       lockedNote(item, onPick, tryChange);
