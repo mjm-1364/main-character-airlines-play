@@ -273,14 +273,17 @@
   .homech .hchead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.78rem; font-weight: 800; }
   .homech .hchead .label { opacity: 0.8; }
   .homech .hchead .link { font-size: 0.78rem; padding: 0 2px; }
-  .homech .hcbody { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 6px; align-items: center; }
-  .homech .hcbody.alldone { display: block; font-size: 0.82rem; font-weight: 800; color: #2f7a46; }
+  /* Fixed height: the panel (and the home screen) stays the same size whatever challenge or character is shown */
+  .homech .hcbody { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 6px; align-items: center; height: 58px; }
+  .homech .hcbody.alldone { display: flex; align-items: center; justify-content: center; font-size: 0.82rem; font-weight: 800; color: #2f7a46; }
   .homech .hcarrow { width: 28px; height: 28px; padding: 0; font: inherit; font-size: 1.1rem; font-weight: 900; line-height: 1; color: var(--ink);
     background: #ffffff; border: 2px solid var(--ink); border-radius: 8px; cursor: pointer; }
   .homech .hcarrow:disabled { opacity: 0.3; cursor: default; }
   .homech .hcarrow:focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
-  .homech .hctext { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; text-align: center; }
-  .homech .hctext strong { font-family: var(--font-display); font-weight: 400; font-size: 0.95rem; letter-spacing: 0.02em; line-height: 1.1; }
+  .homech .hctext { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; height: 58px; overflow: hidden; text-align: center; }
+  .homech .hctext strong { font-family: var(--font-display); font-weight: 400; font-size: 0.95rem; letter-spacing: 0.02em; line-height: 1.1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The character line stays on one line so switching characters never changes the layout */
+  #startCard .who { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .homech .hctext small { font-size: 0.72rem; font-weight: 700; opacity: 0.85; line-height: 1.25; max-width: 100%;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .homech .seq i { width: 13px; height: 13px; font-size: 9px; }
@@ -293,7 +296,12 @@
   @media (max-width: 480px) and (max-height: 700px) { #startCard .slot { display: none; } }
   @media (max-height: 640px) { #startCard .who { display: none; } }
   @media (max-width: 480px) { #startCard .homehint { display: none; } }
-  @media (max-height: 500px) { #startCard .card-inner { gap: 5px; } }
+  @media (max-height: 500px) {
+    #startCard .card-inner { gap: 5px; }
+    .homech { padding: 3px 8px 4px; gap: 1px; }
+    .homech .hcbody, .homech .hctext { height: 48px; }
+    .homech .hctext { gap: 1px; }
+  }
   .adtag { font-size: 0.65rem; letter-spacing: 0.08em; color: #ffffff; background: var(--ink); border-radius: 4px; padding: 2px 5px; }
   body.capture { padding: 0 !important; }
   .capture .stage { border: 0; border-radius: 0; box-shadow: none; max-width: none; }
@@ -781,7 +789,7 @@
         <button class="ghost" id="voice" type="button" aria-pressed="true">Voices: real</button>
       </div>
       <p class="stats" id="statsLine"></p>
-      <p class="stats" id="buildLine">Version 2026-10-19 04:34 UTC</p>
+      <p class="stats" id="buildLine">Version 2026-10-19 04:45 UTC</p>
       <details class="more">
         <summary>Move your progress to another device</summary>
         <p>Copy your save code, then paste it into Settings on the other device and tap Load save code.</p>
