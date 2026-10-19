@@ -448,6 +448,8 @@
   .tally span { font-size: 0.72rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; }
   .tally strong { font-family: var(--font-display); font-weight: 400; font-size: 2.1rem; }
   .coinline { font-weight: 800; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .card .stageline { font-size: 0.85rem; font-weight: 800; margin: -4px 0 0; }
+  @media (max-height: 700px) { #overCard .card-inner { gap: 6px; padding-top: 10px; padding-bottom: 10px; } }
   .unlocks {
     background: #fff3c4;
     border: 2.5px solid var(--ink);
@@ -668,6 +670,7 @@
       <h2 id="overTitle">Face-planted in the snow</h2>
       <p class="quip" id="quip"></p>
       <div class="rank" id="rank">Tutorial level</div>
+      <p class="stageline" id="stageLine"></p>
       <div class="tally">
         <div><span>Score</span><strong id="finalScore">0</strong></div>
         <div><span>Best</span><strong id="finalBest">0</strong></div>
@@ -1535,6 +1538,28 @@
   let state = 'ready';
   let player, poles, particles, popups, flakes, mountains, town;
   let rescueLeft = 0;
+  // ---------- Power-ups, stages and near misses ----------
+  // A power-up sometimes sits in a gap instead of a coin. The bubble shield lasts until it
+  // absorbs a hit; the magnet and double coins run on a timer.
+  const POWERS = {
+    shield: { name: 'Bubble shield', col: '#5ec8ff' },
+    magnet: { name: 'Coin magnet', col: '#e0554b', secs: 6 },
+    double: { name: 'Double coins', col: '#f7c531', secs: 8 }
+  };
+  // Stages arrive with your score. Later stages bring sliding gaps, a night sky and storms.
+  const STAGES = [
+    { at: 0, name: 'Takeoff' },
+    { at: 10, name: 'Cruising altitude' },
+    { at: 22, name: 'Turbulence', moving: 0.3 },
+    { at: 38, name: 'Night flight', moving: 0.35, night: true },
+    { at: 58, name: 'Storm front', moving: 0.45, night: true, storm: true },
+    { at: 85, name: 'Main character energy', moving: 0.55, night: true, storm: true }
+  ];
+  const stageFor = sc => { let i = 0; while (i + 1 < STAGES.length && sc >= STAGES[i + 1].at) i++; return i; };
+  let power = null, bubbleShield = false, lastPowerAt = 0, extraCoins = 0, extraBanked = 0;
+  let stageNo = 0, banner = null, stageFlash = 0, nightAmt = 0, lightning = 0, nextBolt = 0, nearMisses = 0;
+  let bestStage = 0;
+  try { bestStage = parseInt(localStorage.getItem('jetpackersBestStage') || '0', 10) || 0; } catch (e) {}
   let score = 0, streak = 0, runCoins = 0, shieldReady = false, best = 0, t = 0, overAt = 0, scroll = 0, shake = 0;
   let hist = [], curRow = 0, doubled = false, runTime = 0, runDone = [], lastMilestone = 0;
   let waiting = false, paused = false, spawned = 0, lastGapMid = null, tutorialDone = false;
@@ -4203,6 +4228,7 @@
     const nx = nextBuy();
     const parts = [];
     if (runCoins) parts.push(`${runCoins} collected${(hero.coinMult || 1) > 1 ? ` x${hero.coinMult}` : ''}`);
+    if (extraCoins) parts.push(`${extraCoins * (hero.coinMult || 1)} from Double coins`);
     if (scoreBonus(score)) parts.push(`${scoreBonus(score)} score bonus`);
     if (doubled) parts.push('doubled');
     return `+${earned} coin${earned === 1 ? '' : 's'} this run${parts.length ? ` (${parts.join(', ')})` : ''}. Wallet: ${wallet}.` +
@@ -4483,6 +4509,9 @@
     shieldReady = !!hero.shield;
     // In a new player's first three runs, the first hit of each run is forgiven.
     rescueLeft = (runStats.total || 0) < 3 ? 1 : 0;
+    power = null; bubbleShield = false; lastPowerAt = -4; extraCoins = 0; extraBanked = 0;
+    stageNo = 0; banner = null; stageFlash = 0; lightning = 0; nextBolt = 0; nearMisses = 0;
+    setMusicRate(1);
     saidThisRun.clear();
     setStreak(0);
     scoreEl.textContent = '0';
@@ -4510,6 +4539,8 @@
   }
 
   function afterScore() {
+    const si = stageFor(score);
+    if (state === 'play' && si > stageNo) stageUp(si);
     if (!tutorialDone && score >= 3) {
       tutorialDone = true;
       try { localStorage.setItem('jetpackersTutorial', 'done'); } catch (e) {}
@@ -4614,10 +4645,26 @@
       const mid = Math.min(lastGapMid + reach, Math.max(lastGapMid - reach, top + g / 2));
       top = Math.min(groundY() - margin - g, Math.max(margin, mid - g / 2));
     }
+    // From the Turbulence stage on, some gaps slide up and down.
+    let move = null;
+    const st = STAGES[stageNo];
+    if (st.moving && n >= 10 && Math.random() < st.moving) {
+      const amp = (18 + Math.random() * 26) * u;
+      const base = Math.min(groundY() - margin - g - amp, Math.max(margin + amp, top));
+      move = { base, amp, ph: Math.random() * Math.PI * 2, sp: 1.1 + Math.random() * 0.8 };
+      top = base;
+    }
     lastGapMid = top + g / 2;
+    // From about the 4th pole, every 7 to 10 poles a power-up may take the coin's place (never two at once).
+    let pw = null;
+    if (n >= 4 && n - lastPowerAt >= 7 + Math.floor(Math.random() * 4) && !power && !bubbleShield && Math.random() < 0.65) {
+      const roll = Math.random();
+      pw = { kind: roll < 0.35 ? 'shield' : roll < 0.7 ? 'magnet' : 'double', alive: true };
+      lastPowerAt = n;
+    }
     poles.push({
-      x: W + 40 * u, w: 40 * u, gapY: top, gapH: g, passed: false,
-      coin: Math.random() < 0.7 ? { alive: true, p: Math.random() * 6 } : null
+      x: W + 40 * u, w: 40 * u, gapY: top, gapH: g, passed: false, move, power: pw, minClear: Infinity,
+      coin: !pw && Math.random() < 0.7 ? { alive: true, p: Math.random() * 6 } : null
     });
   }
 
@@ -4690,26 +4737,26 @@
   }
 
   // The forgiven hit: clear the obstacle, put the flyer back in open air and say so.
-  function rescue() {
-    rescueLeft = 0;
+  function rescue(why) {
     poles = poles.filter(o => o.x > player.x + 140 * u || o.x + o.w < player.x - 60 * u);
     if (player.y + hitR() > groundY() - 20 * u || player.y < 40 * u) player.y = H * 0.42;
     player.vy = -120 * u;
     player.tilt = 0;
     shake = 0.4;
-    bubble = { text: 'Saved! New flyers get one free bump.', life: 2.4 };
-    popups.push({ x: player.x, y: player.y - 34 * u, life: 0.9, text: 'Saved!' });
+    if (why === 'newbie') bubble = { text: 'Saved! New flyers get one free bump.', life: 2.4 };
+    popups.push({ x: player.x, y: player.y - 34 * u, life: 0.9, text: why === 'shield' ? 'Pop! Shield saved you' : 'Saved!' });
     for (let i = 0; i < 14; i++) {
       const a = Math.random() * Math.PI * 2;
       particles.push({ x: player.x, y: player.y, vx: Math.cos(a) * 120 * u, vy: Math.sin(a) * 120 * u, life: 0.6, max: 0.6, kind: 'gold', r: 2.2 * u });
     }
     tone(520, 0.08, 'triangle', 0.06); tone(780, 0.14, 'triangle', 0.06, null, 0.08);
-    track('rescue', { score });
+    track(why === 'shield' ? 'shield_used' : 'rescue', { score });
   }
 
   function crash(reason) {
     if (captureMode) return;
-    if (state === 'play' && rescueLeft > 0) { rescue(); return; }
+    if (state === 'play' && bubbleShield) { bubbleShield = false; rescue('shield'); return; }
+    if (state === 'play' && rescueLeft > 0) { rescueLeft = 0; rescue('newbie'); return; }
     state = 'over';
     overAt = performance.now();
     shake = 1;
@@ -4740,11 +4787,12 @@
     checkChallenges();
     // Wallet payout: coins collected (Bradley's count double) plus 1 coin for every 5 points.
     const bonus = scoreBonus(score);
-    const gain = (runCoins - banked) * (hero.coinMult || 1) + (bonus - bonusBanked);
+    const gain = (runCoins - banked) * (hero.coinMult || 1) + (bonus - bonusBanked) + (extraCoins - extraBanked) * (hero.coinMult || 1);
     runEarned += gain;
     const fresh = addCoins(gain);
     banked = runCoins;
     bonusBanked = bonus;
+    extraBanked = extraCoins;
     track('run_end', { hero: hero.id, theme: activeTheme().id, trial: !!trialTheme, continued, score, coins: runCoins, seconds: Math.round(runTime), cause: reason, challenges: runDone.length });
     if (fresh.length) track('unlock', { count: fresh.length });
     hook('gameplayStop');
@@ -4770,6 +4818,10 @@
     $('finalScore').textContent = score;
     $('finalBest').textContent = best;
     $('coinLine').textContent = coinSummary(runEarned);
+    const newBest = stageNo + 1 > bestStage;
+    if (newBest) { bestStage = stageNo + 1; try { localStorage.setItem('jetpackersBestStage', String(bestStage)); } catch (e) {} }
+    $('stageLine').textContent = `Stage ${stageNo + 1}/${STAGES.length}: ${STAGES[stageNo].name}` +
+      (newBest && stageNo > 0 ? ' (new best!)' : '') + (nearMisses ? ` · ${nearMisses} close call${nearMisses === 1 ? '' : 's'}` : '');
     renderGoal();
     if (trialTheme) $('coinLine').textContent += ` Like ${activeTheme().name}? Find it in the Locker under Places.`;
     if (lookTrial) {
@@ -4799,9 +4851,46 @@
   }
 
   // ---------- Update ----------
+  // Where a coin is drawn and collected. The magnet pulls coins toward the flyer.
+  function coinPos(o) {
+    let fx = o.x + o.w / 2, fy = o.gapY + o.gapH / 2 + Math.sin(t * 3 + o.coin.p) * o.gapH * 0.22;
+    if (o.coin.pull) { fx += (player.x - fx) * o.coin.pull; fy += (player.y - fy) * o.coin.pull; }
+    return [fx, fy];
+  }
+  function setMusicRate(rate) {
+    try { if (musicSrc) musicSrc.playbackRate.setTargetAtTime(rate, audio.currentTime, 0.6); } catch (e) {}
+  }
+  function stageUp(i) {
+    stageNo = i;
+    const st = STAGES[i];
+    banner = { text: `Stage ${i + 1}: ${st.name}`, life: 2.4 };
+    stageFlash = 1;
+    setMusicRate(1 + i * 0.025);
+    tone(523, 0.1, 'square', 0.05); tone(659, 0.1, 'square', 0.05, null, 0.1); tone(784, 0.22, 'square', 0.05, null, 0.2);
+    track('stage', { stage: i + 1, score });
+  }
+  function grabPower(o, fx, fy) {
+    const pw = POWERS[o.power.kind];
+    o.power.alive = false;
+    if (o.power.kind === 'shield') bubbleShield = true;
+    else power = { kind: o.power.kind, until: runTime + pw.secs, secs: pw.secs };
+    popups.push({ x: fx, y: fy - 10 * u, life: 1.2, text: pw.name + '!' });
+    tone(700, 0.08, 'triangle', 0.06); tone(1050, 0.16, 'triangle', 0.06, null, 0.08);
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({ x: fx, y: fy, vx: Math.cos(a) * 120 * u, vy: Math.sin(a) * 120 * u, life: 0.6, max: 0.6, kind: 'gold', r: 2.2 * u });
+    }
+    track('power_up', { kind: o.power.kind });
+  }
+
   function update(dt) {
     t += dt;
     shake = Math.max(0, shake - dt * 3);
+    stageFlash = Math.max(0, stageFlash - dt * 2.2);
+    lightning = Math.max(0, lightning - dt * 3);
+    if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
+    const wantNight = state === 'play' && STAGES[stageNo].night ? 0.32 : 0;
+    nightAmt += (wantNight - nightAmt) * Math.min(1, dt * 1.2);
     player.squish = Math.max(0, player.squish - dt * 5);
     player.flame = Math.max(0, player.flame - dt * 3.5);
     let drift = 40 * u;
@@ -4827,12 +4916,30 @@
 
       const last = poles[poles.length - 1];
       if (!last || last.x < W - spacing()) spawn();
+      if (power && runTime >= power.until) power = null;
+      // Storms flash now and then.
+      if (STAGES[stageNo].storm && runTime > nextBolt) { lightning = 1; nextBolt = runTime + 4 + Math.random() * 5; tone(90, 0.3, 'triangle', 0.04); }
 
       for (const o of poles) {
         o.x -= sp * dt;
+        if (o.move) o.gapY = o.move.base + Math.sin(t * o.move.sp + o.move.ph) * o.move.amp;
+        if (power && power.kind === 'magnet' && o.coin && o.coin.alive && o.x - player.x < 230 * u && o.x + o.w > player.x - 30 * u) {
+          o.coin.pull = Math.min(1, (o.coin.pull || 0) + dt * 2.6);
+        }
+        if (o.power && o.power.alive) {
+          const fx = o.x + o.w / 2, fy = o.gapY + o.gapH / 2;
+          if (Math.hypot(fx - player.x, fy - player.y) < hitR() + 14 * u) grabPower(o, fx, fy);
+        }
         if (!o.passed && o.x + o.w < player.x - hitR()) {
           o.passed = true;
           score++;
+          // Near miss: scraping past the edge of a gap is worth a bonus point.
+          if (o.minClear < 7 * u) {
+            score++;
+            nearMisses++;
+            popups.push({ x: player.x + 10 * u, y: player.y - 26 * u, life: 0.8, text: 'Close! +1' });
+            tone(1180, 0.05, 'square', 0.03);
+          }
           scoreEl.textContent = score;
           if (o.coin && o.coin.alive) {
             if (streak > 0) {
@@ -4849,16 +4956,18 @@
           tone(760, 0.05, 'square', 0.025);
         }
         if (o.coin && o.coin.alive) {
-          const fx = o.x + o.w / 2, fy = o.gapY + o.gapH / 2 + Math.sin(t * 3 + o.coin.p) * o.gapH * 0.22;
+          const [fx, fy] = coinPos(o);
           if (Math.hypot(fx - player.x, fy - player.y) < hitR() + 12 * u) {
             o.coin.alive = false;
             runCoins++;
+            const dbl = power && power.kind === 'double';
+            if (dbl) extraCoins++;
             setStreak(streak + 1);
             if (hero.shield) shieldReady = true;
             const gain = Math.min(streak, 5) * (hero.coinMult || 1);
             score += gain;
             scoreEl.textContent = score;
-            popups.push({ x: fx, y: fy, life: 0.9, text: '+' + gain });
+            popups.push({ x: fx, y: fy, life: 0.9, text: '+' + gain + (dbl ? ' x2' : '') });
             if (streak === 3 || streak === 5) say('combo');
             coinEvent('C');
             afterScore();
@@ -4878,6 +4987,7 @@
           const dx = cx - player.x;
           const topY = Math.min(player.y, o.gapY);
           const botY = Math.max(player.y, o.gapY + o.gapH);
+          o.minClear = Math.min(o.minClear, player.y - o.gapY - r, o.gapY + o.gapH - player.y - r);
           if (Math.hypot(dx, topY - player.y) < r) { crash('Got icicled'); break; }
           if (Math.hypot(dx, botY - player.y) < r) { crash('Bonked a telephone pole'); break; }
         }
@@ -5281,9 +5391,122 @@
     for (const o of poles) {
       drawTopObstacle(o.x, o.gapY, o.w);
       drawBottomObstacle(o.x, o.gapY + o.gapH, o.w);
-      if (o.coin && o.coin.alive) {
-        drawCoin(o.x + o.w / 2, o.gapY + o.gapH / 2 + Math.sin(t * 3 + o.coin.p) * o.gapH * 0.22);
+      if (o.coin && o.coin.alive) drawCoin(...coinPos(o));
+      if (o.power && o.power.alive) drawPowerUp(o.power.kind, o.x + o.w / 2, o.gapY + o.gapH / 2);
+    }
+  }
+
+  // A power-up: a coloured bubble with an icon, bobbing gently.
+  function drawPowerUp(kind, x, y) {
+    const pw = POWERS[kind];
+    const bob = reduceMotion ? 0 : Math.sin(t * 4) * 3 * u;
+    const R = 15 * u;
+    ctx.save();
+    ctx.translate(x, y + bob);
+    ctx.globalAlpha = 0.35 + (reduceMotion ? 0 : Math.abs(Math.sin(t * 3)) * 0.25);
+    ctx.beginPath(); ctx.arc(0, 0, R * 1.5, 0, Math.PI * 2); ctx.fillStyle = pw.col; ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); paint(ctx, '#ffffff', 2.5 * u);
+    ctx.lineWidth = 2.5 * u; ctx.strokeStyle = INK; ctx.fillStyle = pw.col;
+    if (kind === 'shield') {
+      ctx.beginPath(); ctx.moveTo(0, -R * 0.62); ctx.lineTo(R * 0.55, -R * 0.35); ctx.lineTo(R * 0.45, R * 0.25);
+      ctx.lineTo(0, R * 0.65); ctx.lineTo(-R * 0.45, R * 0.25); ctx.lineTo(-R * 0.55, -R * 0.35); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    } else if (kind === 'magnet') {
+      ctx.beginPath(); ctx.arc(0, -R * 0.05, R * 0.42, Math.PI, 0); ctx.lineWidth = R * 0.32; ctx.strokeStyle = pw.col; ctx.stroke();
+      ctx.lineWidth = 2 * u; ctx.strokeStyle = INK;
+      ctx.beginPath(); ctx.arc(0, -R * 0.05, R * 0.58, Math.PI, 0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, -R * 0.05, R * 0.26, Math.PI, 0); ctx.stroke();
+      for (const sx of [-1, 1]) {
+        ctx.beginPath(); ctx.rect(sx * R * 0.42 - R * 0.16, -R * 0.05, R * 0.32, R * 0.42); paint(ctx, sx < 0 ? pw.col : '#c8c8c8', 2 * u);
       }
+    } else {
+      ctx.font = `${R * 1.15}px "Luckiest Guy", Impact, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3 * u; ctx.strokeText('x2', 0, R * 0.08);
+      ctx.fillStyle = pw.col; ctx.fillText('x2', 0, R * 0.08);
+      ctx.textBaseline = 'alphabetic';
+    }
+    ctx.restore();
+  }
+
+  // The bubble around a shielded flyer.
+  function drawShield() {
+    if (!bubbleShield || state !== 'play') return;
+    const R = hitR() * 1.55 + (reduceMotion ? 0 : Math.sin(t * 5) * 1.5 * u);
+    ctx.save();
+    ctx.globalAlpha = 0.22; ctx.fillStyle = '#5ec8ff';
+    ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.9; ctx.lineWidth = 2.5 * u; ctx.strokeStyle = '#2b8fd6'; ctx.stroke();
+    ctx.globalAlpha = 0.8; ctx.lineWidth = 2 * u; ctx.strokeStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(player.x, player.y, R * 0.75, -2.4, -1.6); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Night and storm overlays, speed lines, the stage banner and the active power-up's timer.
+  function drawStageEffects() {
+    if (nightAmt > 0.01) {
+      ctx.fillStyle = `rgba(16, 20, 58, ${nightAmt.toFixed(3)})`;
+      ctx.fillRect(VL - 20, -20, VR - VL + 40, H + 40);
+    }
+    if (STAGES[stageNo].storm && state === 'play' && !reduceMotion) {
+      ctx.strokeStyle = 'rgba(200, 220, 255, 0.45)'; ctx.lineWidth = 1.5 * u;
+      ctx.beginPath();
+      for (let i = 0; i < 40; i++) {
+        const x = ((i * 97 + t * 420) % (W + 60)) - 30, y = ((i * 53 + t * 900) % (H + 40)) - 20;
+        ctx.moveTo(x, y); ctx.lineTo(x - 6 * u, y + 16 * u);
+      }
+      ctx.stroke();
+    }
+  }
+  function drawOverlays() {
+    // Speed lines once the run gets fast
+    const fast = Math.min(1, Math.max(0, (speed() / u - 230) / 100));
+    if (fast > 0 && state === 'play' && !waiting && !reduceMotion) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${(0.35 * fast).toFixed(3)})`; ctx.lineWidth = 2 * u;
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++) {
+        const y = ((i * 61 + 37) % (H * 0.8)) + H * 0.05;
+        const x = W - ((t * speed() * 1.6 + i * 131) % (W + 120));
+        ctx.moveTo(x, y); ctx.lineTo(x + (30 + (i % 3) * 14) * u, y);
+      }
+      ctx.stroke();
+    }
+    if (lightning > 0) { ctx.fillStyle = `rgba(255, 255, 255, ${(lightning * 0.5).toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
+    if (stageFlash > 0) { ctx.fillStyle = `rgba(255, 244, 200, ${(stageFlash * 0.35).toFixed(3)})`; ctx.fillRect(0, 0, W, H); }
+    // Active power-up pill with its timer
+    if (state === 'play' && (power || bubbleShield)) {
+      const kind = power ? power.kind : 'shield';
+      const pw = POWERS[kind];
+      const label = power ? pw.name : 'Shield ready';
+      ctx.save();
+      ctx.font = `900 ${11 * u}px Nunito, sans-serif`;
+      const w = ctx.measureText(label).width + 44 * u, h = 24 * u, x = W / 2 - w / 2, y = groundY() + 14 * u;
+      rr(ctx, x, y, w, h, 12 * u); paint(ctx, '#ffffff', 2.5 * u);
+      if (power) {
+        const left = Math.max(0, (power.until - runTime) / power.secs);
+        ctx.save(); rr(ctx, x, y, w, h, 12 * u); ctx.clip();
+        ctx.fillStyle = pw.col; ctx.globalAlpha = 0.45; ctx.fillRect(x, y, w * left, h);
+        ctx.restore();
+        rr(ctx, x, y, w, h, 12 * u); ctx.lineWidth = 2.5 * u; ctx.strokeStyle = INK; ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(x + 13 * u, y + h / 2, 6 * u, 0, Math.PI * 2); paint(ctx, pw.col, 2 * u);
+      ctx.fillStyle = INK; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, x + 25 * u, y + h / 2 + 0.5 * u);
+      ctx.restore();
+    }
+    if (banner) {
+      const age = 2.4 - banner.life;
+      const k = reduceMotion ? 1 : Math.min(1, age / 0.25);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, banner.life / 0.4);
+      ctx.translate(W / 2, H * 0.3);
+      ctx.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k);
+      ctx.font = `${24 * u}px "Luckiest Guy", Impact, sans-serif`;
+      ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+      ctx.lineWidth = 6 * u; ctx.strokeStyle = INK; ctx.strokeText(banner.text, 0, 0);
+      ctx.fillStyle = '#ffd23f'; ctx.fillText(banner.text, 0, 0);
+      ctx.restore();
     }
   }
 
@@ -5429,7 +5652,7 @@
       draw();
       ctx.restore();
     };
-    wide(() => { drawSky(); drawFar(); drawMid(); });
+    wide(() => { drawSky(); drawFar(); drawMid(); drawStageEffects(); });
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
     ctx.translate(sx, sy);
@@ -5450,10 +5673,12 @@
     ctx.translate(sx, sy);
     trailDraw(ctx, gameTrail, u);
     drawPlayer();
+    drawShield();
     if (state !== 'ready') drawBubble(ctx, player.x, player.y - headR() * 2.4 * hero.size, u, W);
     drawParticles();
     drawHint();
     drawFlakes();
+    drawOverlays();
     ctx.restore();
     if (framed) {
       ctx.lineWidth = 3 / S;
