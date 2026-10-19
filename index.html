@@ -1883,11 +1883,19 @@
   }
 
   // Shows a speech bubble and speaks the line in the chosen voice style.
+  // Within one run the challenge-complete line ("personal record") plays only once, and no other
+  // line repeats, so a long run doesn't keep saying the same thing.
+  const saidThisRun = new Set();
   function say(kind, text) {
-    const line = text || pickOne((hero.lines && hero.lines[kind]) || []);
+    if (kind === 'win' && saidThisRun.has('win')) return;
+    let options = (hero.lines && hero.lines[kind]) || [];
+    if (kind !== 'start') options = options.filter(l => !saidThisRun.has(l));
+    const line = text || pickOne(options);
     if (!line) return;
     const urgent = kind === 'crash' || kind === 'win' || kind === 'start';
     if (!urgent && bubble && bubble.life > 0.6) return;
+    if (kind === 'win') saidThisRun.add('win');
+    saidThisRun.add(line);
     let len = 0;
     if (voiceMode === 'real') {
       const url = clipFor(hero, kind, line);
@@ -4475,6 +4483,7 @@
     shieldReady = !!hero.shield;
     // In a new player's first three runs, the first hit of each run is forgiven.
     rescueLeft = (runStats.total || 0) < 3 ? 1 : 0;
+    saidThisRun.clear();
     setStreak(0);
     scoreEl.textContent = '0';
   }
