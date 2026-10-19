@@ -755,7 +755,7 @@
         <button class="ghost" id="voice" type="button" aria-pressed="true">Voices: real</button>
       </div>
       <p class="stats" id="statsLine"></p>
-      <p class="stats" id="buildLine">Version 2026-10-19 03:44 UTC</p>
+      <p class="stats" id="buildLine">Version 2026-10-19 03:50 UTC</p>
       <details class="more">
         <summary>Move your progress to another device</summary>
         <p>Copy your save code, then paste it into Settings on the other device and tap Load save code.</p>
@@ -4959,7 +4959,8 @@
     if (state === 'ready') begin();
     else if (state === 'play' && waiting) { waiting = false; flap(); hook('gameplayStart'); }
     else if (state === 'play') flap();
-    else if (state === 'over' && performance.now() - overAt > 450) playAgain();
+    // After a crash, only the Run it back button (or Enter) starts the next run, so taps and
+    // Space presses carried over from the run don't restart it by accident.
   }
 
   // ---------- Between-run ad ----------
@@ -6350,6 +6351,13 @@
     if ((e.code === 'Escape' || e.code === 'KeyP') && state === 'play') {
       e.preventDefault();
       if (paused) resumeGame(); else pauseGame();
+      return;
+    }
+    // Enter on the game-over screen runs it back (Space doesn't; it's the flying key).
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && state === 'over' && !overCard.hidden && performance.now() - overAt > 450) {
+      if (e.target.closest && e.target.closest('button, select, summary, a')) return;
+      e.preventDefault();
+      playAgain();
       return;
     }
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
