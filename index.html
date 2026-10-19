@@ -105,6 +105,8 @@
   .streak { background: var(--gold); transform: rotate(2deg); }
   .streak b { color: var(--ink); }
   .sound { pointer-events: auto; font: inherit; color: var(--ink); cursor: pointer; }
+  .hud .left, .hud .meta .tag:not(.sound) { transition: opacity 0.18s ease; }
+  .hud.dim .left, .hud.dim .meta .tag:not(.sound) { opacity: 0.25; }
   .card {
     position: absolute;
     inset: 0;
@@ -534,6 +536,8 @@
   .goal { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 800; font-size: 0.82rem; }
   .goal .meter { width: 200px; height: 12px; }
   .goal .ready { color: #2f7a46; }
+  .goal .helprow { gap: 8px; }
+  .goal .helprow button { padding: 6px 14px; font-size: 0.85rem; }
   /* Every Locker tab gets the same list height, so the Locker never changes size when you switch tabs */
   #panel { min-height: 0; }
   #panel > .chscroll { height: 260px; max-height: none; }
@@ -549,9 +553,12 @@
     .home #preview { width: 230px; }
     #lockerCard #preview { width: 230px; }
     /* The item list shrinks on short phones so the whole Locker fits */
-    #panel > .chscroll { height: clamp(140px, calc(100dvh - 582px), 300px); }
-    /* Room for a two-line message plus its buttons, so the Locker keeps one size */
-    .lockmsg { height: 7em; }
+    #panel > .chscroll { height: clamp(140px, calc(100dvh - 486px), 380px); }
+    /* Messages pop up over the bottom of the list, so the list gets the room */
+    #lockerCard .custom { position: relative; }
+    .lockmsg { position: absolute; left: 0; right: 0; bottom: 0; height: auto; max-height: 55%; overflow-y: auto; z-index: 6;
+      background: var(--paper); border: 2.5px solid var(--ink); border-radius: 10px; padding: 8px 10px; box-shadow: 0 -3px 0 rgba(0, 0, 0, 0.08); box-sizing: border-box; }
+    .lockmsg:empty { display: none; }
     .deal { padding: 4px 8px; font-size: 0.72rem; gap: 2px 6px; }
     .deal button { padding: 2px 10px; font-size: 0.72rem; }
   }
@@ -572,7 +579,7 @@
     .tab { padding: 4px 4px; }
     .lockmsg { font-size: 0.74rem; }
     .lockercrew .pick strong { display: none; }
-    #panel > .chscroll { height: clamp(110px, calc(100dvh - 520px), 260px); }
+    #panel > .chscroll { height: clamp(110px, calc(100dvh - 436px), 300px); }
   }
   /* Short screens (small laptops, game-site frames, landscape phones): tighten the home screen */
   @media (max-height: 780px) {
@@ -1641,9 +1648,19 @@
     return left >= 2 ? 0.8 : left <= 0 ? 1 : 0.8 + 0.2 * (1 - left / 2);
   };
   // Each challenge also pays out one boost; which one is fixed per challenge.
-  const boostForChallenge = ch => BOOST_KINDS[(Math.max(0, CHALLENGES.indexOf(ch)) * 7 + 3) % BOOST_KINDS.length];
+  const boostForChallenge = ch => {
+    const i = Math.max(0, CHALLENGES.indexOf(ch));
+    return i % 3 === 0 ? BOOST_KINDS[(i / 3 * 5 + 3) % BOOST_KINDS.length] : null;
+  };
+  const boostRewardText = ch => { const k = boostForChallenge(ch); return k ? ` + 1 ${BOOSTS[k].name}` : ''; };
   // Daily reward days that add a boost to the coins.
   const DAILY_BOOSTS = { 3: 'magnet', 5: 'wide', 7: 'life' };
+  // Rough runs in a row, and the day the helping hand was last taken (once a day).
+  let lowRuns = 0, helpDay = '';
+  try {
+    lowRuns = parseInt(localStorage.getItem('jetpackersLowRuns') || '0', 10) || 0;
+    helpDay = localStorage.getItem('jetpackersHelpDay') || '';
+  } catch (e) {}
   let score = 0, streak = 0, runCoins = 0, shieldReady = false, best = 0, t = 0, overAt = 0, scroll = 0, shake = 0;
   let hist = [], curRow = 0, doubled = false, runTime = 0, runDone = [], lastMilestone = 0;
   let waiting = false, paused = false, spawned = 0, lastGapMid = null, tutorialDone = false;
@@ -4262,7 +4279,7 @@
       d.append(seq);
     }
     const rw = document.createElement('small');
-    rw.textContent = `Unlocks ${rewardFor(ch)} + 1 ${BOOSTS[boostForChallenge(ch)].name}`;
+    rw.textContent = `Unlocks ${rewardFor(ch)}${boostRewardText(ch)}`;
     d.append(rw);
     // Pattern challenges can be picked to show on the run tracker.
     if (trackable(ch)) {
@@ -4323,8 +4340,60 @@
     document.querySelectorAll('.bankline').forEach(renderBankInto);
   }
   // Game-over progress: how many items this character can buy now, and a bar to the next one.
+  // After three rough runs in a row: a free Wide gaps for the next run (once a day), and once ads
+  // are on, an Extra life for watching one.
+  function renderHelp(box) {
+    const lab = document.createElement('span');
+    lab.textContent = 'Rough flight? Take a free Wide gaps for your next run.';
+    const take = document.createElement('button');
+    take.type = 'button'; take.className = 'go'; take.id = 'helpBtn';
+    take.textContent = 'Take it';
+    const done = text => {
+      helpDay = dayKey(); lowRuns = 0;
+      try { localStorage.setItem('jetpackersHelpDay', helpDay); localStorage.setItem('jetpackersLowRuns', '0'); } catch (e) {}
+      saveBoosts();
+      renderHomeBoosts();
+      const t = document.createElement('span');
+      t.className = 'ready';
+      t.textContent = text;
+      box.replaceChildren(t);
+    };
+    const switchOn = k => { if (!loadout.includes(k) && loadout.length < MAX_LOADOUT) loadout.push(k); };
+    take.addEventListener('click', e => {
+      e.stopPropagation();
+      addBoost('wide'); switchOn('wide');
+      track('help_taken', { kind: 'wide' });
+      done('Wide gaps is on for your next run. You got this.');
+    });
+    const row = document.createElement('div');
+    row.className = 'row helprow';
+    row.append(take);
+    if (adsAvailable()) {
+      const ad = document.createElement('button');
+      ad.type = 'button'; ad.className = 'adbtn'; ad.id = 'helpAdBtn';
+      ad.innerHTML = '<span class="adtag">AD</span> Plus an Extra life';
+      ad.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!(await watchAd('help_life', 'Your boosts arrive in'))) return;
+        addBoost('wide'); switchOn('wide');
+        addBoost('life'); switchOn('life');
+        track('help_taken', { kind: 'wide+life' });
+        done('Wide gaps and an Extra life are on for your next run.');
+      });
+      row.append(ad);
+    }
+    box.replaceChildren(lab, row);
+    box.hidden = false;
+  }
+  const helpOffered = () => lowRuns >= 3 && helpDay !== dayKey();
   function renderGoal() {
     const box = $('goalBox');
+    if (helpOffered()) {
+      renderHelp(box);
+      $('switchBtn').classList.remove('pulse');
+      $('switchBtn').textContent = 'Locker';
+      return;
+    }
     const left = UNLOCKABLES.filter(u => (!u.owner || u.owner === hero.id) && !(u.item.isPlace ? themeOpen(u.item) : isOpen(u.item)));
     const ready = left.filter(u => canBuy(u.item)).length;
     const next = left.filter(u => u.item.price > wallet && !runsShort(u.item)).sort((a, b) => a.item.price - b.item.price)[0];
@@ -4681,9 +4750,9 @@
     track('challenge_complete', { id: ch.id });
     hook('happytime');
     const bk = boostForChallenge(ch);
-    addBoost(bk);
+    if (bk) addBoost(bk);
     popups.push({ x: player.x, y: player.y - 50 * u, life: 1.6, text: `${ch.name}!` });
-    popups.push({ x: player.x, y: player.y - 30 * u, life: 1.6, text: `+1 ${BOOSTS[bk].name}` });
+    if (bk) popups.push({ x: player.x, y: player.y - 30 * u, life: 1.6, text: `+1 ${BOOSTS[bk].name}` });
     tone(523, 0.1, 'square', 0.05);
     tone(659, 0.1, 'square', 0.05, null, 0.1);
     tone(784, 0.1, 'square', 0.05, null, 0.2);
@@ -4699,6 +4768,8 @@
   function trackerChallenge() {
     const picked = CHALLENGES.find(ch => ch.id === trackedId);
     if (trackable(picked)) return picked;
+    // Brand-new players learn to fly first; patterns still count, just without the tracker.
+    if ((runStats.total || 0) < 5) return null;
     return CHALLENGES.find(ch => ch.type === 'pattern' && ch.who === hero.id && !doneCh.has(ch.id)) ||
       CHALLENGES.find(ch => ch.type === 'pattern' && ch.who === 'all' && !doneCh.has(ch.id));
   }
@@ -4874,6 +4945,9 @@
     // then check the challenges that depend on them.
     if (!runCounted) {
       runCounted = true;
+      // Count rough runs in a row for the helping hand on the game-over screen.
+      lowRuns = score < 5 ? lowRuns + 1 : 0;
+      try { localStorage.setItem('jetpackersLowRuns', String(lowRuns)); } catch (e) {}
       runStats.total++;
       sessionRuns++;
       runStats.by[hero.id] = (runStats.by[hero.id] || 0) + 1;
@@ -4905,7 +4979,7 @@
       cd.replaceChildren();
       const head = document.createElement('strong');
       head.textContent = runDone.length === 1 ? 'Challenge complete' : `${runDone.length} challenges complete`;
-      cd.append(head, document.createTextNode(runDone.map(ch => `${ch.name}: unlocked ${rewardFor(ch)} + 1 ${BOOSTS[boostForChallenge(ch)].name}`).join('. ')));
+      cd.append(head, document.createTextNode(runDone.map(ch => `${ch.name}: unlocked ${rewardFor(ch)}${boostRewardText(ch)}`).join('. ')));
       cd.hidden = false;
     } else {
       cd.hidden = true;
@@ -5119,7 +5193,7 @@
     g.addColorStop(0, T.sky[0]);
     g.addColorStop(1, T.sky[1]);
     ctx.fillStyle = g;
-    ctx.fillRect(VL, 0, VR - VL, H);
+    ctx.fillRect(VL, VT, VR - VL, VB - VT);
     const [kind, col] = T.orb;
     const ox = W * 0.82, oy = H * 0.14, orr = 26 * u;
     ctx.beginPath(); ctx.arc(ox, oy, orr, 0, Math.PI * 2);
@@ -5317,16 +5391,16 @@
     ctx.beginPath();
     const step = 60 * u, off = scroll % step;
     const x0 = -off - Math.ceil(-VL / step) * step;
-    ctx.moveTo(x0, H);
+    ctx.moveTo(x0, VB + 10);
     ctx.lineTo(x0, y);
     for (let x = x0; x <= VR + step; x += step) {
       ctx.quadraticCurveTo(x + step / 2, y - (T.road ? 0 : 6 * u), x + step, y);
     }
-    ctx.lineTo(VR + step * 2, H);
+    ctx.lineTo(VR + step * 2, VB + 10);
     ctx.closePath();
     paint(ctx, T.ground[0], 2.5 * u);
     ctx.fillStyle = T.ground[1];
-    ctx.fillRect(VL, y + 20 * u, VR - VL, H - y);
+    ctx.fillRect(VL, y + 20 * u, VR - VL, VB - y);
     if (T.road) {
       const dash = 40 * u, doff = scroll % dash;
       ctx.fillStyle = '#ffffff';
@@ -5431,7 +5505,7 @@
   function drawTopObstacle(x, y1, w) {
     const s = activeTheme().top;
     if (s === 'icicle') drawIcicles(x, y1, w);
-    else drawColumn(x, -10, y1, w, s, true);
+    else drawColumn(x, VT - 10, y1, w, s, true);
   }
   function drawBottomObstacle(x, y0, w) {
     const s = activeTheme().bottom;
@@ -5443,7 +5517,7 @@
     if (y1 <= 0) return;
     const jag = 16 * u;
     ctx.beginPath();
-    ctx.moveTo(x, -10);
+    ctx.moveTo(x, VT - 10);
     ctx.lineTo(x, y1 - jag);
     const n = 3;
     for (let i = 0; i < n; i++) {
@@ -5451,11 +5525,11 @@
       ctx.lineTo(sx + w / n / 2, y1 - (i === 1 ? 0 : jag * 0.35));
       ctx.lineTo(sx + w / n, y1 - jag);
     }
-    ctx.lineTo(x + w, -10);
+    ctx.lineTo(x + w, VT - 10);
     ctx.closePath();
     paint(ctx, '#d9f1ff', 2.5 * u);
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
-    ctx.fillRect(x + w * 0.2, 0, w * 0.12, Math.max(0, y1 - jag - 6 * u));
+    ctx.fillRect(x + w * 0.2, VT, w * 0.12, Math.max(0, y1 - jag - 6 * u - VT));
   }
 
   function drawPole(x, y0, w) {
@@ -5543,7 +5617,7 @@
   function drawStageEffects() {
     if (nightAmt > 0.01) {
       ctx.fillStyle = `rgba(16, 20, 58, ${nightAmt.toFixed(3)})`;
-      ctx.fillRect(VL - 20, -20, VR - VL + 40, H + 40);
+      ctx.fillRect(VL - 20, VT - 20, VR - VL + 40, VB - VT + 40);
     }
     if (STAGES[stageNo].storm && state === 'play' && !reduceMotion) {
       ctx.strokeStyle = 'rgba(200, 220, 255, 0.45)'; ctx.lineWidth = 1.5 * u;
@@ -5743,9 +5817,9 @@
 
   // The scenery's left and right edges in play-area units. Normally the play area itself;
   // while drawing the scenery they reach the screen edges.
-  let VL = 0, VR = 0;
+  let VL = 0, VR = 0, VT = 0, VB = 0;
   function draw() {
-    VL = 0; VR = W;
+    VL = 0; VR = W; VT = 0; VB = H;
     if (coverOpts && drawCover) { drawCover(); return; }
     const framed = OX > 1 || OY > 1;
     if (framed) drawBackdrop();
@@ -5753,17 +5827,17 @@
     // Scenery fills the whole screen; obstacles, the player and effects stay inside the play area.
     const sx = shake > 0 && !reduceMotion ? (Math.random() - 0.5) * 10 * u * shake : 0;
     const sy = shake > 0 && !reduceMotion ? (Math.random() - 0.5) * 10 * u * shake : 0;
-    VL = -OX / S; VR = W + OX / S;
+    VL = -OX / S; VR = W + OX / S; VT = -OY / S; VB = H + OY / S;
     const wide = draw => {
       ctx.save();
-      ctx.beginPath(); ctx.rect(VL, 0, VR - VL, H); ctx.clip();
+      ctx.beginPath(); ctx.rect(VL, VT, VR - VL, VB - VT); ctx.clip();
       ctx.translate(sx, sy);
       draw();
       ctx.restore();
     };
     wide(() => { drawSky(); drawFar(); drawMid(); drawStageEffects(); });
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    ctx.beginPath(); ctx.rect(0, VT, W, VB - VT); ctx.clip();
     ctx.translate(sx, sy);
     drawPoles();
     ctx.restore();
@@ -5772,13 +5846,13 @@
       if (OX > 1) {
         // Soften the sides so the play area stands out.
         ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
-        ctx.fillRect(VL - 20, -20, -VL + 20, H + 40);
-        ctx.fillRect(W, -20, VR - W + 20, H + 40);
+        ctx.fillRect(VL - 20, VT - 20, -VL + 20, VB - VT + 40);
+        ctx.fillRect(W, VT - 20, VR - W + 20, VB - VT + 40);
       }
     });
     VL = 0; VR = W;
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    ctx.beginPath(); ctx.rect(0, VT, W, VB - VT); ctx.clip();
     ctx.translate(sx, sy);
     trailDraw(ctx, gameTrail, u);
     drawPlayer();
@@ -5789,16 +5863,39 @@
     drawFlakes();
     drawOverlays();
     ctx.restore();
-    if (framed) {
+    // Wide screens get side lines marking the play area; tall phones are filled edge to edge.
+    if (OX > 1) {
       ctx.lineWidth = 3 / S;
       ctx.strokeStyle = INK;
-      ctx.strokeRect(0, 0, W, H);
+      ctx.beginPath();
+      ctx.moveTo(0, VT); ctx.lineTo(0, VB);
+      ctx.moveTo(W, VT); ctx.lineTo(W, VB);
+      ctx.stroke();
     }
+    VT = 0; VB = H;
   }
 
   // ---------- Loop & input ----------
   let lastT = performance.now();
+  // The score card and challenge tracker fade while the flyer (or their speech bubble) is up
+  // behind them, so the character is never hidden. The Pause button stays solid.
+  const hudEl = document.querySelector('.hud'), hudLeft = document.querySelector('.hud .left');
+  let hudDim = false, hudBox = null, hudCheck = 0;
+  function updateHudDim() {
+    let dim = false;
+    if (state === 'play' && !paused) {
+      if (!hudBox || --hudCheck <= 0) {
+        const st = stage.getBoundingClientRect(), lb = hudLeft.getBoundingClientRect();
+        hudBox = { bottom: lb.bottom - st.top, right: lb.right - st.left };
+        hudCheck = 20;
+      }
+      const top = OY + (player.y - headR() * (bubble && bubble.life > 0 ? 4.2 : 1.6) * hero.size) * S;
+      dim = top < hudBox.bottom + 6 && OX + (player.x - headR() * 2) * S < hudBox.right;
+    }
+    if (dim !== hudDim) { hudDim = dim; hudEl.classList.toggle('dim', dim); }
+  }
   function frame(now) {
+    updateHudDim();
     const dt = Math.min((now - lastT) / 1000, 1 / 30);
     lastT = now;
     if (!paused && !frozen) {
