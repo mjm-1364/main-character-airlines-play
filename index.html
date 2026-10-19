@@ -2158,6 +2158,32 @@
   window.addEventListener('touchend', unlockAudio, true);
   window.addEventListener('keydown', unlockAudio, true);
 
+  // iPhone Safari zooms on a quick double tap even with touch-action set, and ignores the viewport's
+  // user-scalable setting. A second tap within 350 ms has its default cancelled (which stops the zoom)
+  // and is passed straight to the button it landed on, so fast taps still work. Swipes are left alone.
+  // Pinch zoom is blocked as well.
+  let lastTapEnd = 0, touchStartX = 0, touchStartY = 0;
+  document.addEventListener('touchstart', e => {
+    const p = e.touches[0];
+    if (p) { touchStartX = p.clientX; touchStartY = p.clientY; }
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (e.touches.length) return;
+    const p = e.changedTouches[0];
+    const moved = p ? Math.hypot(p.clientX - touchStartX, p.clientY - touchStartY) : 0;
+    if (moved > 10) return;
+    const now = Date.now();
+    const quick = now - lastTapEnd < 350;
+    lastTapEnd = now;
+    if (!quick) return;
+    const target = e.target;
+    if (target.closest && target.closest('select, input, textarea')) return;
+    e.preventDefault();
+    const btn = target.closest && target.closest('button, summary, label, a');
+    if (btn && !btn.disabled) btn.click();
+  }, { passive: false });
+  for (const name of ['gesturestart', 'gesturechange']) document.addEventListener(name, e => e.preventDefault(), { passive: false });
+
   // ---------- Analytics and platform hooks ----------
   // Every event goes into window.jetpackersEvents and a small on-device summary. A hosting page or a
   // game-portal SDK can listen by defining window.JetpackersHooks before this script runs
