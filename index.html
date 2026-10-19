@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Main Character Airlines</title>
 <meta name="description" content="A one-button arcade game: pick a meme character, strap a drink to your back and fly.">
 <meta name="theme-color" content="#6fb6e6">
@@ -35,6 +35,9 @@
     color-scheme: light;
   }
   html, body { height: 100%; }
+  /* No double-tap zoom anywhere (menus and lists are their own scroll areas, which don't inherit
+     it from the stage). Scrolling still works. */
+  html, body, * { touch-action: manipulation; }
   body {
     background: #cfe7f7;
     color: var(--ink);
