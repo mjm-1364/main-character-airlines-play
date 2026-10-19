@@ -471,6 +471,13 @@
     max-width: 44ch;
   }
   .unlocks strong { font-family: var(--font-display); font-weight: 400; font-size: 1rem; color: var(--red); display: block; letter-spacing: 0.03em; }
+  #chDone { padding: 5px 12px; }
+  .runsum > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 2px 10px; }
+  .runsum > summary::-webkit-details-marker { display: none; }
+  .runsum > summary > span:first-child { color: var(--red); }
+  .runsum .sumhint { font-size: 0.72rem; color: var(--muted); text-decoration: underline; }
+  .runsum[open] .sumhint { display: none; }
+  .runsum ul { margin: 6px 0 2px; padding-left: 18px; text-align: left; max-height: 22vh; overflow-y: auto; font-size: 0.8rem; font-weight: 700; line-height: 1.35; }
   .row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
   .go, .ghost {
     font: inherit;
@@ -748,7 +755,7 @@
         <button class="ghost" id="voice" type="button" aria-pressed="true">Voices: real</button>
       </div>
       <p class="stats" id="statsLine"></p>
-      <p class="stats" id="buildLine">Version 2026-10-19 03:36 UTC</p>
+      <p class="stats" id="buildLine">Version 2026-10-19 03:44 UTC</p>
       <details class="more">
         <summary>Move your progress to another device</summary>
         <p>Copy your save code, then paste it into Settings on the other device and tap Load save code.</p>
@@ -4231,6 +4238,41 @@
     say('start');
   }
 
+  // Game over: challenges finished and items now affordable, as one short line. "Details" opens the
+  // full list (it scrolls if long), so the buttons always stay on screen.
+  let runFresh = [];
+  function renderRunSummary() {
+    const box = $('chDone');
+    $('unlocks').hidden = true;
+    const parts = [];
+    if (runDone.length) parts.push(runDone.length === 1 ? `Challenge done: ${runDone[0].name}` : `${runDone.length} challenges done`);
+    if (runFresh.length) parts.push(`${runFresh.length} new to buy`);
+    if (!parts.length) { box.hidden = true; return; }
+    const d = document.createElement('details');
+    d.className = 'runsum';
+    const sum = document.createElement('summary');
+    const t = document.createElement('span');
+    t.textContent = parts.join(' · ');
+    const hint = document.createElement('span');
+    hint.className = 'sumhint';
+    hint.textContent = 'Details';
+    sum.append(t, hint);
+    const list = document.createElement('ul');
+    for (const ch of runDone) {
+      const li = document.createElement('li');
+      li.textContent = `${ch.name}: ${rewardFor(ch)}${boostRewardText(ch)}`;
+      list.append(li);
+    }
+    for (const label of runFresh) {
+      const li = document.createElement('li');
+      li.textContent = `Ready to buy: ${label}`;
+      list.append(li);
+    }
+    d.append(sum, list);
+    box.replaceChildren(d);
+    box.hidden = false;
+  }
+
   async function doubleCoins() {
     if (coinsDoubled || runEarned <= 0 || state !== 'over' || !adsAvailable()) return;
     const ok = await watchAd('double_coins', 'Doubling your coins in');
@@ -4241,12 +4283,8 @@
     $('coinLine').textContent = coinSummary(runEarned * 2, true);
     renderGoal();
     if (fresh.length) {
-      const ul = $('unlocks');
-      ul.replaceChildren();
-      const head = document.createElement('strong');
-      head.textContent = fresh.length === 1 ? 'Ready to buy' : `${fresh.length} items ready to buy`;
-      ul.append(head, document.createTextNode(fresh.slice(0, 3).join(', ') + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : '') + '. Open the Locker to spend your coins.'));
-      ul.hidden = false;
+      runFresh = [...new Set([...runFresh, ...fresh])];
+      renderRunSummary();
       tone(880, 0.1, 'square', 0.05);
       tone(1320, 0.2, 'square', 0.05, null, 0.1);
     }
@@ -5026,16 +5064,6 @@
     $('quip').textContent = `${hero.name}: "${quipLine}"`;
     if (!runDone.length) say('crash', quipLine);
     renderTracker();
-    const cd = $('chDone');
-    if (runDone.length) {
-      cd.replaceChildren();
-      const head = document.createElement('strong');
-      head.textContent = runDone.length === 1 ? 'Challenge complete' : `${runDone.length} challenges complete`;
-      cd.append(head, document.createTextNode(runDone.map(ch => `${ch.name}: unlocked ${rewardFor(ch)}${boostRewardText(ch)}`).join('. ')));
-      cd.hidden = false;
-    } else {
-      cd.hidden = true;
-    }
     $('rank').textContent = rankFor(score);
     $('finalScore').textContent = score;
     $('finalBest').textContent = best;
@@ -5050,18 +5078,12 @@
       const it = lookTrial.item;
       $('coinLine').textContent += it.challenge ? ` Liked ${it.name}? Win its challenge to keep it.` : ` Liked ${it.name}? It's ${priceOf(it)} coins in the Locker.`;
     }
-    const ul = $('unlocks');
+    runFresh = fresh;
+    renderRunSummary();
     if (fresh.length) {
-      ul.replaceChildren();
-      const head = document.createElement('strong');
-      head.textContent = fresh.length === 1 ? 'Ready to buy' : `${fresh.length} items ready to buy`;
-      ul.append(head, document.createTextNode(fresh.slice(0, 3).join(', ') + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : '') + '. Open the Locker to spend your coins.'));
-      ul.hidden = false;
       tone(660, 0.1, 'square', 0.05, null, 0.7);
       tone(880, 0.1, 'square', 0.05, null, 0.8);
       tone(1320, 0.2, 'square', 0.05, null, 0.9);
-    } else {
-      ul.hidden = true;
     }
     $('copied').textContent = '';
     heroLook = lookOf(hero);
