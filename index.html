@@ -748,6 +748,7 @@
         <button class="ghost" id="voice" type="button" aria-pressed="true">Voices: real</button>
       </div>
       <p class="stats" id="statsLine"></p>
+      <p class="stats" id="buildLine">Version 2026-10-19 03:36 UTC</p>
       <details class="more">
         <summary>Move your progress to another device</summary>
         <p>Copy your save code, then paste it into Settings on the other device and tap Load save code.</p>
@@ -800,6 +801,8 @@
   const scoreEl = $('score'), bestEl = $('best'), streakEl = $('streak'), streakChip = $('streakChip');
   const startCard = $('startCard'), overCard = $('overCard'), lockerCard = $('lockerCard');
   const settingsCard = $('settingsCard'), infoCard = $('infoCard'), boostsCard = $('boostsCard');
+  // The build stamps the version; an unbuilt copy (like the preview page) says so.
+  if ($('buildLine').textContent.includes('BUILD')) $('buildLine').textContent = 'Version: preview';
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const INK = '#222222';
   const PD = Math.min(window.devicePixelRatio || 1, 2);
@@ -2163,11 +2166,12 @@
   window.addEventListener('touchend', unlockAudio, true);
   window.addEventListener('keydown', unlockAudio, true);
 
-  // iPhone Safari zooms on a quick double tap even with touch-action set, and ignores the viewport's
-  // user-scalable setting. A second tap within 350 ms has its default cancelled (which stops the zoom)
-  // and is passed straight to the button it landed on, so fast taps still work. Swipes are left alone.
+  // iPhone Safari zooms on a double tap even with touch-action set and user-scalable=no, and its
+  // double-tap window is longer than it looks. So the game handles every tap itself: Safari's default
+  // for each tap is cancelled (no tap left for it to count as a double tap) and the tap goes straight
+  // to the button it landed on. Swipes, dropdowns and text fields are left to the browser.
   // Pinch zoom is blocked as well.
-  let lastTapEnd = 0, touchStartX = 0, touchStartY = 0;
+  let touchStartX = 0, touchStartY = 0;
   document.addEventListener('touchstart', e => {
     const p = e.touches[0];
     if (p) { touchStartX = p.clientX; touchStartY = p.clientY; }
@@ -2177,10 +2181,6 @@
     const p = e.changedTouches[0];
     const moved = p ? Math.hypot(p.clientX - touchStartX, p.clientY - touchStartY) : 0;
     if (moved > 10) return;
-    const now = Date.now();
-    const quick = now - lastTapEnd < 350;
-    lastTapEnd = now;
-    if (!quick) return;
     const target = e.target;
     if (target.closest && target.closest('select, input, textarea')) return;
     e.preventDefault();
