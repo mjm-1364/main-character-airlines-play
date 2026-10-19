@@ -35,6 +35,11 @@
     color-scheme: light;
   }
   html, body { height: 100%; }
+  /* Pin the page so iPhone Safari can't rubber-band it when you drag; only real lists scroll,
+     and they don't pull the page along at their ends. */
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  body { position: fixed; inset: 0; width: 100%; }
+  .card, .chscroll, .boostlist, .info, .lockmsg, .fold.yours > .chips { overscroll-behavior: contain; }
   /* No double-tap zoom anywhere (menus and lists are their own scroll areas, which don't inherit
      it from the stage). Scrolling still works. */
   html, body, * { touch-action: manipulation; }
@@ -2183,6 +2188,24 @@
     if (btn && !btn.disabled) btn.click();
   }, { passive: false });
   for (const name of ['gesturestart', 'gesturechange']) document.addEventListener(name, e => e.preventDefault(), { passive: false });
+  // A drag only moves something that can actually scroll that way (a list with more in it).
+  // Anything else, the game screen included, stays still instead of bouncing.
+  function scrollsWith(el, dy) {
+    for (; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (!/(auto|scroll)/.test(cs.overflowY) || el.scrollHeight <= el.clientHeight + 1) continue;
+      if (dy > 0 && el.scrollTop > 0) return true;
+      if (dy < 0 && el.scrollTop + el.clientHeight < el.scrollHeight - 1) return true;
+      if (dy === 0) return true;
+    }
+    return false;
+  }
+  document.addEventListener('touchmove', e => {
+    if (e.touches.length > 1) { e.preventDefault(); return; }
+    const p = e.touches[0];
+    const dy = p ? p.clientY - touchStartY : 0;
+    if (!scrollsWith(e.target, dy)) e.preventDefault();
+  }, { passive: false });
 
   // ---------- Analytics and platform hooks ----------
   // Every event goes into window.jetpackersEvents and a small on-device summary. A hosting page or a
