@@ -6,7 +6,8 @@
 <title>Main Character Airlines</title>
 <meta name="description" content="A one-button arcade game: pick a meme character, strap a drink to your back and fly.">
 <meta name="theme-color" content="#6fb6e6">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-512.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="fonts/fonts.css">
 <style>
@@ -3092,10 +3093,10 @@
     for (const p of tr.parts) drawTrailPart(c, p, k);
   }
 
-  function trailSample(c, id, w, h) {
+  function trailSample(c, id, w, h, keepBackground) {
     const tv = resolveTrail(id);
     id = tv.kind;
-    c.clearRect(0, 0, w, h);
+    if (!keepBackground) c.clearRect(0, 0, w, h);
     if (id === 'rainbow') {
       const pts = [];
       for (let x = 2; x <= w - 2; x += 2) pts.push({ x, y: h / 2 + Math.sin(x / 6) * 2 });
