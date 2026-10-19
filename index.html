@@ -781,7 +781,7 @@
         <button class="ghost" id="voice" type="button" aria-pressed="true">Voices: real</button>
       </div>
       <p class="stats" id="statsLine"></p>
-      <p class="stats" id="buildLine">Version 2026-10-19 04:15 UTC</p>
+      <p class="stats" id="buildLine">Version 2026-10-19 04:34 UTC</p>
       <details class="more">
         <summary>Move your progress to another device</summary>
         <p>Copy your save code, then paste it into Settings on the other device and tap Load save code.</p>
@@ -1208,7 +1208,7 @@
     return ch.id;
   };
 
-  // ----- Per character: 24 outfits, 20 extras, 8 signature trails, 4 signature coins, 8 challenges -----
+  // ----- Per character: every item comes in 3 colours (its original plus 2 recolours), 8 challenges -----
   const CHAR_CHALLENGES = {
     chad: [['Drop set', 'CCMCCMCC', 'Two reps, rest, repeat.'], ['Warm-up then max', 'CMCMCCCC'], ['Superset', 'MCCCCCM'],
       ['Gym rat', 30], ['Hall of gains', 120], ['Protein budget', 12], ['No spotter needed', 6], ['Never skips', 25]],
@@ -1237,9 +1237,9 @@
       return addChallenge({ id, who: c.id, name, type, value: v, desc });
     });
 
-    // 24 outfits: the three starter outfits in eight styles each
+    // 6 outfits: the three starter outfits in two more styles each
     const outfits = [];
-    for (let k = 0; k < 8; k++) {
+    for (let k = 0; k < 2; k++) {
       const st = STYLES[(k + ci) % 8];
       c.outfits.slice(0, 3).forEach(b => {
         const colours = {};
@@ -1250,36 +1250,36 @@
         outfits.push({ name: `${st.n} ${b.name}`, fam: b.name, o: Object.assign({}, b.o, colours) });
       });
     }
-    price(outfits, ladder(24, 75, 3000), [7, 15, 23]);
-    [7, 15, 23].forEach((slot, j) => { outfits[slot].challenge = ids[j]; });
+    price(outfits, ladder(6, 75, 1500), [3, 4, 5]);
+    [3, 4, 5].forEach((slot, j) => { outfits[slot].challenge = ids[j]; });
 
-    // 20 extras: the four original extras in five styles each
+    // 8 extras: the four original extras in two more styles each
     const extras = [];
-    [0, 4, 7, 9, 10].forEach(si => {
+    [0, 4].forEach(si => {
       const st = STYLES[si];
       c.accs.slice(0, 4).forEach(b => extras.push({ id: `${b.id}-${st.key}`, base: b.id, v: forced(st), name: `${b.name} (${st.n})` }));
     });
-    price(extras, ladder(20, 125, 3200), [9, 19]);
-    extras[9].challenge = ids[3];
-    extras[19].challenge = ids[4];
+    price(extras, ladder(8, 125, 2400), [5, 7]);
+    extras[5].challenge = ids[3];
+    extras[7].challenge = ids[4];
 
-    // 8 signature trails: both signature trails in four styles each
+    // 4 signature trails: both signature trails in two more styles each
     const trails = [];
-    [0, 3, 5, 11].forEach(si => {
+    [0, 11].forEach(si => {
       const st = STYLES[si];
       c.sigTrails.slice(0, 2).forEach(b => trails.push({ id: `${b.id}-${st.key}`, kind: b.id, v: forced(st), name: `${b.name} (${st.n})` }));
     });
-    price(trails, ladder(8, 300, 2800), [3, 7]);
-    trails[3].challenge = ids[5];
-    trails[7].challenge = ids[6];
+    price(trails, ladder(4, 300, 2400), [2, 3]);
+    trails[2].challenge = ids[5];
+    trails[3].challenge = ids[6];
 
-    // 4 more signature coins
-    c.coins = [0, 3, 5, 11].map(si => {
+    // 2 more signature coins
+    c.coins = [0, 11].map(si => {
       const st = forced(STYLES[si]);
       return { id: `${c.coin.id}-${STYLES[si].key}`, base: c.coin.id, v: st, name: `${c.coin.name} (${STYLES[si].n})` };
     });
-    price(c.coins, ladder(4, 600, 2400), [3]);
-    c.coins[3].challenge = ids[7];
+    price(c.coins, ladder(2, 600, 1800), [1]);
+    c.coins[1].challenge = ids[7];
 
     for (const it of [...outfits, ...extras, ...trails, ...c.coins]) it.owner = c.id;
     c.outfits.push(...outfits);
@@ -1287,7 +1287,7 @@
     c.sigTrails.push(...trails);
   });
 
-  // ----- Everyone: 24 challenges, 40 trails, 36 coin styles (places are added with the places) -----
+  // ----- Everyone: 24 challenges; every trail and coin style in 3 colours (places are added with the places) -----
   const G = [
     ['Heartbeat', 'pattern', 'CCMCCM'], ['Frequent flyer', 'score', 40], ['Pocket change', 'runCoins', 10],
     ['Bookends', 'pattern', 'MCCCCM'], ['Cruising altitude', 'score', 75], ['Window seat', 'noCoinScore', 50],
@@ -1319,32 +1319,32 @@
 
   const TRAIL_KINDS = ['fizz', 'fire', 'sparkle', 'hearts', 'pixels', 'cash', 'snowstorm', 'comet', 'lightning'];
   const genTrails = [];
-  for (let r = 0; r < 5 && genTrails.length < 40; r++) {
+  for (let r = 0; r < 2; r++) {
     TRAIL_KINDS.forEach((kind, k) => {
-      if (genTrails.length >= 40) return;
       const st = STYLES[(k + r * 2) % STYLES.length];
       const baseName = TRAILS.find(t => t.id === kind).name;
       genTrails.push({ id: `${kind}-${st.key}`, kind, v: forced(st), name: `${baseName} (${st.n})` });
     });
   }
-  const trailRewardSlots = [4, 9, 14, 19, 24, 29, 34, 39];
-  price(genTrails, ladder(40, 150, 20000), trailRewardSlots);
+  // Second-round colours of the first eight kinds are challenge prizes.
+  const trailRewardSlots = [9, 10, 11, 12, 13, 14, 15, 16];
+  price(genTrails, ladder(genTrails.length, 150, 6000), trailRewardSlots);
   trailRewardSlots.forEach((slot, j) => { genTrails[slot].challenge = rewardIds(0)[j]; });
   TRAILS.push(...genTrails);
 
   const COIN_BASES = ['gold', 'silver', 'snow', 'diamond', 'crypto', 'trophycoin', 'ruby', 'globe'];
   const COIN_STYLES = STYLES.filter(s => s.key !== 'gold');
   const genCoins = [];
-  for (let r = 0; r < 5 && genCoins.length < 36; r++) {
+  for (let r = 0; r < 2; r++) {
     COIN_BASES.forEach((base, k) => {
-      if (genCoins.length >= 36) return;
       const st = COIN_STYLES[(k + r * 3) % COIN_STYLES.length];
       const baseName = COINS.find(x => x.id === base).name;
       genCoins.push({ id: `${base}-${st.key}`, base, v: forced(st), name: `${baseName} (${st.n})` });
     });
   }
-  const coinRewardSlots = [3, 7, 12, 16, 21, 25, 30, 34];
-  price(genCoins, ladder(36, 120, 18000), coinRewardSlots);
+  // Second-round colours are challenge prizes.
+  const coinRewardSlots = [8, 9, 10, 11, 12, 13, 14, 15];
+  price(genCoins, ladder(genCoins.length, 120, 5000), coinRewardSlots);
   coinRewardSlots.forEach((slot, j) => { genCoins[slot].challenge = rewardIds(1)[j]; });
   COINS.push(...genCoins);
 
@@ -1389,7 +1389,7 @@
     UNLOCKABLES.push({ item, unlock: item.unlock, owner, label });
   };
   for (const c of CREW) {
-    c.outfits.forEach((o, i) => o.unlock && sellable(o, `o-${c.id}-${i}`, `${o.name} outfit (${c.name})`, c.id));
+    c.outfits.forEach(o => o.unlock && sellable(o, `o-${c.id}-${o.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, `${o.name} outfit (${c.name})`, c.id));
     c.accs.forEach(a => a.unlock && sellable(a, `a-${c.id}-${a.id}`, `${a.name} (${c.name})`, c.id));
     c.sigTrails.forEach(tr => tr.unlock && sellable(tr, `t-${c.id}-${tr.id}`, `${tr.name} trail (${c.name})`, c.id));
     [c.coin, ...c.coins].forEach(co => co.unlock && sellable(co, `c-${c.id}-${co.id}`, `${co.name} coin (${c.name})`, c.id));
@@ -1545,19 +1545,19 @@
     if (t.music) t.music = Object.assign({}, t.music, { transpose: t.music.transpose + (st.lit && st.lit < 0 ? -3 : 2) });
     return t;
   }
+  // Every place comes in at most 3 looks: the original plus 2 versions.
   const morePlaces = [];
-  // 24 more character worlds: each world at dawn, dusk, night and in neon. They come with that world pack.
-  THEMES.filter(x => x.kind === 'bundle').forEach(w => ['dawn', 'dusk', 'night', 'neon'].forEach((k, j) =>
-    morePlaces.push(placeVariant(w, k, { coinPrice: w.coinPrice + (j + 1) * 350 }))));
-  // 8 more places earned with lifetime coins
-  const coinPlaces = [['snow', 'mono'], ['snow', 'frost'], ['snow', 'neon'], ['snow', 'heat'], ['sunset', 'neon'], ['sunset', 'mono'], ['redeye', 'neon'], ['redeye', 'frost']]
-    .map(([b, k]) => placeVariant(baseTheme(b), k));
-  ladder(8, 600, 15000).forEach((n, i) => { coinPlaces[i].unlock = n; });
+  // Each character world at night (comes with that world pack); City Marathon also in neon.
+  THEMES.filter(x => x.kind === 'bundle').forEach(w => morePlaces.push(placeVariant(w, 'night', { coinPrice: w.coinPrice + 350 })));
+  morePlaces.push(placeVariant(baseTheme('marathon'), 'neon', { coinPrice: baseTheme('marathon').coinPrice + 700 }));
+  // 3 more places bought with coins
+  const coinPlaces = [['snow', 'frost'], ['sunset', 'neon'], ['redeye', 'neon']].map(([b, k]) => placeVariant(baseTheme(b), k));
+  ladder(3, 600, 6000).forEach((n, i) => { coinPlaces[i].unlock = n; });
   morePlaces.push(...coinPlaces);
-  // 12 more limited-time places: each seasonal place at dusk, at night and in neon, in the same months
-  THEMES.filter(x => x.kind === 'season').forEach(sp => ['dusk', 'night', 'neon'].forEach(k => morePlaces.push(placeVariant(sp, k))));
+  // Each limited-time place at night and in neon, in the same months
+  THEMES.filter(x => x.kind === 'season').forEach(sp => ['night', 'neon'].forEach(k => morePlaces.push(placeVariant(sp, k))));
   // 8 places won by challenges
-  [['snow', 'dawn'], ['snow', 'dusk'], ['sunset', 'frost'], ['redeye', 'heat'], ['gym', 'mono'], ['fest', 'mono'], ['arcade', 'mono'], ['coffee', 'mono']]
+  [['snow', 'dusk'], ['sunset', 'frost'], ['redeye', 'heat'], ['gym', 'mono'], ['fest', 'mono'], ['arcade', 'mono'], ['coffee', 'mono'], ['finance', 'mono']]
     .forEach(([b, k], i) => morePlaces.push(placeVariant(baseTheme(b), k, { kind: 'challenge', challenge: PLACE_REWARD_IDS[i], hero: undefined, coinPrice: undefined })));
   THEMES.push(...morePlaces);
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -1589,6 +1589,19 @@
   if (walletNew) {
     UNLOCKABLES.forEach(u => { if ((u.owner ? heroCoins(u.owner) : bank) >= u.unlock) bought.add(u.item.key); });
     saveWallet();
+  }
+  // Colours and places that were retired (each item now has 3 colours) are refunded, 40 coins each.
+  let retiredRefund = 0;
+  {
+    const live = new Set(UNLOCKABLES.map(u => u.item.key));
+    THEMES.forEach(x => { if (x.key) live.add(x.key); });
+    const gone = [...bought].filter(k => !live.has(k));
+    if (gone.length) {
+      gone.forEach(k => bought.delete(k));
+      retiredRefund = gone.length * 40;
+      wallet += retiredRefund;
+      saveWallet();
+    }
   }
   function saveWallet() {
     try {
@@ -4639,6 +4652,7 @@
   } else if (boostStarter) {
     giftNote = 'New: Boosts! 2 free ones are waiting for you.';
   }
+  if (retiredRefund) giftNote = (giftNote ? giftNote + ' ' : '') + `We trimmed some colors, so you got ${retiredRefund} coins back.`;
   let daily = { last: '', streak: 0 };
   try { daily = Object.assign(daily, JSON.parse(localStorage.getItem('jetpackersDaily') || '{}')); } catch (e) {}
   const dayKey = (off = 0) => { const d = new Date(); d.setDate(d.getDate() + off); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
